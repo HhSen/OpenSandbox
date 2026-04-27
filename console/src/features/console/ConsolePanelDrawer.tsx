@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import type { Sandbox, ChatMessage } from '@/api/types.ts'
 import { streamSession } from '@/api/sse.ts'
+import { useAutoRenew } from '@/hooks/useAutoRenew.ts'
 import { MessageList } from './MessageList.tsx'
 import { PromptInput } from './PromptInput.tsx'
 import { ConfirmDialog } from '@/components/ConfirmDialog.tsx'
@@ -35,12 +36,14 @@ export function ConsolePanelDrawer({ sandbox, onClose }: Props) {
   const abortRef = useRef<AbortController | null>(null)
   const firstAssistantRef = useRef(false)
 
+  const tryRenew = useAutoRenew()
   const isPaused = sandbox.status.state === 'Paused' || sandbox.status.state === 'Pausing'
   const envEntries = Object.entries(sandbox.env ?? {})
 
   const handleSubmit = useCallback(
     (prompt: string, permMode?: string) => {
       if (streaming) return
+      tryRenew(sandbox)
       setPermissionDeniedMsg(null)
 
       const userMsg: ChatMessage = {
@@ -182,7 +185,7 @@ export function ConsolePanelDrawer({ sandbox, onClose }: Props) {
         },
       )
     },
-    [sandbox.id, port, sessionId, cwd, permissionMode, streaming],
+    [sandbox, port, sessionId, cwd, permissionMode, streaming, tryRenew],
   )
 
   function handleClear() {

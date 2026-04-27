@@ -21,12 +21,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ConsolePanelDrawer } from '@/features/console/ConsolePanelDrawer.tsx'
 import { DiagnosticsDrawer } from '@/features/diagnostics/DiagnosticsDrawer.tsx'
+import { useAutoRenew } from '@/hooks/useAutoRenew.ts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
 export function DashboardPage() {
   const qc = useQueryClient()
+  const tryRenew = useAutoRenew()
   const [showCreate, setShowCreate] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [renewing, setRenewing] = useState<string | null>(null)
@@ -176,10 +178,10 @@ export function DashboardPage() {
                           View Diagnostics
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => pauseMutation.mutate(sb.id)}>
+                        <DropdownMenuItem onClick={() => { pauseMutation.mutate(sb.id); tryRenew(sb) }}>
                           Pause
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => resumeMutation.mutate(sb.id)}>
+                        <DropdownMenuItem onClick={() => { resumeMutation.mutate(sb.id); tryRenew(sb) }}>
                           Resume
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setRenewing(sb.id)}>
