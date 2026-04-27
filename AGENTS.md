@@ -1,22 +1,121 @@
-# OpenSandbox AGENTS
+# OpenSandbox — Workspace Index
 
-Use this file as the root router for the monorepo. Prefer the nearest `AGENTS.md` in the directory tree for task-specific instructions.
+## How To Use This Index
 
-## Repository Map
+- Use this file for repository shape, startup, build/run, and cross-module flows.
+- Treat each local `CLAUDE.md` as the source of truth for its module.
+- Move from root orientation to the nearest local guide before editing.
 
-- `server/`: lifecycle control plane and server tests
-- `components/execd/`: in-sandbox execution daemon
-- `sdks/`: language SDKs and generated clients
-- `specs/`: public API contracts
-- `components/`, `cli/`, `docs/`, `kubernetes/`, `sandboxes/`: runtime, tooling, and deployment surfaces
+## Project Overview
 
-## Routing
+OpenSandbox is a general-purpose sandbox platform for AI applications. It provides multi-language SDKs, unified sandbox lifecycle and execution APIs, and Docker/Kubernetes runtimes. Primary use cases include Coding Agents, GUI Agents, Agent Evaluation, AI Code Execution, and RL Training.
 
-- For `server/**`, or lifecycle server behavior, sandbox creation flow, or user-visible server config, read `server/AGENTS.md`.
-- For `sdks/**`, or SDK generation, handwritten adapters, or cross-language SDK alignment, read `sdks/AGENTS.md`.
-- For `specs/**`, or API contract, schema, or example changes, read `specs/AGENTS.md`.
-- For cross-cutting changes spanning spec, server, and SDKs, start with `specs/AGENTS.md` and then read affected consumer guides.
-- For areas without a local `AGENTS.md`, use the nearest `README.md`, `DEVELOPMENT.md`, and CI workflow as the next source of truth.
+## Code Structure
+
+```text
+OpenSandbox/
+├── server/          # Python FastAPI lifecycle control plane
+├── specs/           # OpenAPI contracts (sandbox-lifecycle, execd-api, egress-api)
+├── sdks/            # Multi-language SDKs (Python, JS/TS, Kotlin/Java, C#, Go) + MCP
+├── cli/             # `osb` command-line interface
+├── kubernetes/      # Kubernetes operator (BatchSandbox, Pool CRDs) and Helm chart
+├── components/
+│   ├── execd/       # In-sandbox execution daemon (commands and file operations)
+│   ├── ingress/     # Sandbox traffic ingress proxy
+│   └── egress/      # Sandbox network egress control
+├── console/         # React/Vite web management UI
+├── sandboxes/       # Runtime sandbox images (code-interpreter, claude-agent-server, etc.)
+├── examples/        # SDK usage, agent integrations, browser/desktop/ML workloads
+├── docs/            # Architecture docs and design notes
+├── oseps/           # OpenSandbox Enhancement Proposals
+├── tests/           # Cross-component E2E tests
+└── scripts/         # Development and maintenance scripts
+```
+
+## Module Ownership
+
+- `server/` — lifecycle API server; sandbox create/pause/resume/kill, pre-warm pool management
+- `specs/` — public OpenAPI contracts; source of truth for sandbox lifecycle, execd, and egress APIs
+- `sdks/` — handwritten + generated SDK clients across languages; MCP server
+- `cli/` — `osb` CLI for interactive sandbox management
+- `kubernetes/` — Kubernetes operator (BatchSandbox + Pool CRDs), task-executor, Helm chart
+- `components/execd/` — in-sandbox daemon; command execution and file operations over gRPC
+- `components/ingress/` — traffic proxy for sandbox port routing
+- `components/egress/` — per-sandbox network egress controls
+- `console/` — React management UI; sandbox CRUD, pool management, SSE console
+
+## Cross-Module Flows
+
+### 1. Sandbox Lifecycle (Create → Run → Kill)
+
+1. Client (SDK or CLI) calls lifecycle server (`server/`) via `specs/sandbox-lifecycle.yml` HTTP API.
+2. Server creates/schedules a container via Docker or Kubernetes runtime.
+3. Container starts `execd` (`components/execd/`) as the in-sandbox process daemon.
+4. Client uses SDK to call `execd` via `specs/execd-api.yaml` for command execution and file I/O.
+5. Network traffic to sandbox ports is routed through ingress; outbound is filtered by egress.
+6. Kill/pause calls return through the lifecycle server.
+
+### 2. Spec → Server → SDK Update Flow
+
+1. Change `specs/sandbox-lifecycle.yml` or `specs/execd-api.yaml`.
+2. Regenerate server schema (if applicable) and SDK generated clients.
+3. Update handwritten adapter/service layers in affected SDKs.
+4. Run lifecycle server tests and affected SDK language checks.
+
+### 3. Kubernetes Pool Allocation
+
+1. `PoolReconciler` schedules pods; assigns them to `BatchSandbox` via annotation.
+2. `BatchSandboxReconciler` reads annotations, dispatches tasks through `TaskScheduler`.
+3. `TaskScheduler` sends execution requests to the `task-executor` binary inside sandbox pods.
+
+## Repo-Wide Conventions
+
+- `specs/*` are public contract sources — treat as immutable without review.
+- Prefer additive, backward-compatible changes for all public interfaces.
+- Generated code lives under clearly marked paths; never patch it as the only fix.
+- Tests must be updated whenever behavior changes or bugs are fixed.
+- Keep changes focused: do not mix unrelated component work.
+- Prefer file-scoped or package-scoped checks before full-suite validation.
+
+## Build And Run
+
+```bash
+# Start the full stack via Docker Compose
+docker compose up opensandbox-server
+
+# Build sandbox runtime images (needed once before starting the full stack)
+docker compose --profile sandbox-images build
+
+# Start the server directly (Python)
+cp server/opensandbox_server/examples/example.config.toml ~/.sandbox.toml
+cd server && uv run python -m opensandbox_server.main
+
+# Start the web console dev server (http://localhost:5173)
+cd console && npm run dev
+```
+
+## Startup Sequence
+
+1. Configure `~/.sandbox.toml` (copy from `server/opensandbox_server/examples/example.config.toml`).
+2. Start `opensandbox-server` (Docker Compose or `uv run` in `server/`).
+3. (Optional) Build sandbox images: `docker compose --profile sandbox-images build`.
+4. (Optional) Start the console UI: `cd console && npm run dev`.
+5. Verify: `osb config init && osb sandbox create --image python:3.12`.
+
+## Operational Notes
+
+- Requires Docker for local execution; Python 3.10+ for server and examples.
+- `SANDBOX_CONFIG_PATH` env var overrides the default config file location.
+- The console UI dev proxy expects the server on `localhost:8080` by default.
+- For Kubernetes deployment, see `kubernetes/CLAUDE.md` and `kubernetes/charts/`.
+
+## Local Guides
+
+- [`server/CLAUDE.md`](server/CLAUDE.md) — lifecycle server, FastAPI routes, test commands
+- [`specs/CLAUDE.md`](specs/CLAUDE.md) — OpenAPI contracts, regeneration workflow
+- [`sdks/CLAUDE.md`](sdks/CLAUDE.md) — multi-language SDKs, generated code, build commands
+- [`kubernetes/CLAUDE.md`](kubernetes/CLAUDE.md) — operator, CRDs, Helm, E2E tests
+- [`console/CLAUDE.md`](console/CLAUDE.md) — React web UI, API client, build and dev
 
 ## Guardrails
 
@@ -30,22 +129,14 @@ Always:
 - Regenerate derived outputs when the source-of-truth file changes.
 - Update tests when behavior changes or bugs are fixed.
 - Mention unrun or blocked verification in the final handoff.
-- Prefer file-scoped or package-scoped checks before full-suite validation.
 
 Ask first:
 
-- Breaking public API, SDK, config, protocol, or CLI changes
-- Intentional drift between a public contract and its implementation
-- User-visible config or behavior changes without a clear migration story
+- Breaking public API, SDK, config, protocol, or CLI changes.
+- Intentional drift between a public contract and its implementation.
+- User-visible config or behavior changes without a clear migration story.
 
 Never:
 
 - Edit generated output as the only fix.
 - Mix unrelated component work into the same change.
-
-## Review Focus
-
-- Prioritize breaking changes in specs, SDK interfaces, config, CLI behavior, and protocols.
-- Flag protocol changes that are unnecessary, inconsistent, or hard to implement.
-- Flag changes that break source-of-truth boundaries or intended layering.
-- Call out missing tests and compatibility risks explicitly.

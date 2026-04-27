@@ -171,6 +171,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!console/src/lib/
 lib64/
 parts/
 sdist/
