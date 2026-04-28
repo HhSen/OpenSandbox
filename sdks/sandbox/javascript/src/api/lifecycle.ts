@@ -397,6 +397,8 @@ export interface paths {
                 query?: {
                     /** @description Whether to return a server-proxied URL */
                     use_server_proxy?: boolean;
+                    /** @description Unix epoch seconds for a signed route token (OSEP-0011) */
+                    expires?: number;
                 };
                 header?: never;
                 path: {
@@ -604,11 +606,11 @@ export interface components {
          */
         PlatformSpec: {
             /**
-             * @description Target operating system (for example `linux`).
+             * @description Target operating system (for example `linux` or `windows`).
              * @example linux
              * @enum {string}
              */
-            os: "linux";
+            os: "linux" | "windows";
             /**
              * @description Target CPU architecture (for example `amd64` or `arm64`).
              * @example arm64

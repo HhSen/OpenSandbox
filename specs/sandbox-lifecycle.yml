@@ -1022,8 +1022,8 @@ components:
       properties:
         os:
           type: string
-          enum: [linux]
-          description: Target operating system (for example `linux`).
+          enum: [linux, windows]
+          description: Target operating system (for example `linux` or `windows`).
           example: linux
         arch:
           type: string
