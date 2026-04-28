@@ -1432,7 +1432,7 @@ async def test_create_sandbox_windows_profile_injects_runtime_defaults(mock_dock
     mock_docker.from_env.return_value = mock_client
 
     cfg = _app_config()
-    cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.13"
+    cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.14"
     cfg.docker.network_mode = "bridge"
     service = DockerSandboxService(config=cfg)
     request = CreateSandboxRequest(
@@ -1515,7 +1515,7 @@ async def test_create_sandbox_windows_profile_rejects_missing_runtime_devices(mo
     mock_docker.from_env.return_value = mock_client
 
     cfg = _app_config()
-    cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.13"
+    cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.14"
     cfg.docker.network_mode = "bridge"
     service = DockerSandboxService(config=cfg)
     request = CreateSandboxRequest(
@@ -1554,7 +1554,7 @@ async def test_create_sandbox_windows_profile_rejects_below_minimum_resource_lim
     mock_docker.from_env.return_value = mock_client
 
     cfg = _app_config()
-    cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.13"
+    cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.14"
     cfg.docker.network_mode = "bridge"
     service = DockerSandboxService(config=cfg)
     request = CreateSandboxRequest(
@@ -1591,7 +1591,7 @@ async def test_create_sandbox_windows_profile_accepts_dockur_demo_like_request(m
     mock_docker.from_env.return_value = mock_client
 
     cfg = _app_config()
-    cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.13"
+    cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.14"
     cfg.docker.network_mode = "bridge"
     service = DockerSandboxService(config=cfg)
     request = CreateSandboxRequest(
@@ -1645,7 +1645,7 @@ async def test_create_sandbox_windows_profile_with_network_policy_maps_windows_p
     mock_docker.from_env.return_value = mock_client
 
     cfg = _app_config()
-    cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.11"
+    cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.14"
     cfg.docker.network_mode = "bridge"
     cfg.egress = EgressConfig(image="opensandbox/egress:latest")
     service = DockerSandboxService(config=cfg)
@@ -3318,3 +3318,18 @@ class TestDockerVolumeValidation:
 
         host_config_call = mock_client.api.create_host_config.call_args
         assert "binds" not in host_config_call.kwargs
+
+
+def test_docker_get_endpoint_rejects_expires():
+    from unittest.mock import patch
+
+    with patch("opensandbox_server.services.docker.docker"):
+        cfg = _app_config()
+        cfg.docker.network_mode = "bridge"
+        service = DockerSandboxService(config=cfg)
+
+        with pytest.raises(HTTPException) as exc:
+            service.get_endpoint("sbx-001", 8080, expires=1000)
+
+        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert "not supported" in exc.value.detail["message"].lower()
