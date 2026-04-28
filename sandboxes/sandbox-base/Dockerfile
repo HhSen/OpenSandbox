@@ -28,17 +28,6 @@ RUN npm prune --production
 # Mirrors claude-agent-server/code-interpreter/Dockerfile_base with repo-root COPY paths.
 FROM ubuntu:24.04 AS code-interpreter-base
 
-# TODO: remove mirrors if not needed
-# Configure APT mirrors — Aliyun → TUNA → USTC → upstream (fallback chain).
-# Ubuntu 24.04 uses DEB822 format; multiple space-separated URIs are tried in order.
-RUN if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
-    sed -i \
-    -e 's|URIs: http://archive.ubuntu.com/ubuntu|URIs: http://mirrors.aliyun.com/ubuntu http://mirrors.tuna.tsinghua.edu.cn/ubuntu http://mirrors.ustc.edu.cn/ubuntu http://archive.ubuntu.com/ubuntu|g' \
-    -e 's|URIs: http://security.ubuntu.com/ubuntu|URIs: http://mirrors.aliyun.com/ubuntu http://mirrors.tuna.tsinghua.edu.cn/ubuntu http://mirrors.ustc.edu.cn/ubuntu http://security.ubuntu.com/ubuntu|g' \
-    -e 's|URIs: http://ports.ubuntu.com/ubuntu-ports|URIs: http://mirrors.aliyun.com/ubuntu-ports http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports http://mirrors.ustc.edu.cn/ubuntu-ports http://ports.ubuntu.com/ubuntu-ports|g' \
-    /etc/apt/sources.list.d/ubuntu.sources; \
-    fi
-
 ARG TARGETARCH
 
 SHELL ["/bin/bash", "-c"]

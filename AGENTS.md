@@ -35,14 +35,16 @@ OpenSandbox/
 ## Module Ownership
 
 - `server/` — lifecycle API server; sandbox create/pause/resume/kill, pre-warm pool management
-- `specs/` — public OpenAPI contracts; source of truth for sandbox lifecycle, execd, and egress APIs
-- `sdks/` — handwritten + generated SDK clients across languages; MCP server
+- `specs/` — public OpenAPI contracts; source of truth for sandbox lifecycle, execd, egress, and diagnostics APIs
+- `sdks/` — handwritten + generated SDK clients across languages (Python, JS/TS, Kotlin, C#, Go); MCP server
 - `cli/` — `osb` CLI for interactive sandbox management
 - `kubernetes/` — Kubernetes operator (BatchSandbox + Pool CRDs), task-executor, Helm chart
-- `components/execd/` — in-sandbox daemon; command execution and file operations over gRPC
-- `components/ingress/` — traffic proxy for sandbox port routing
-- `components/egress/` — per-sandbox network egress controls
+- `components/execd/` — in-sandbox HTTP/SSE daemon; command execution, file I/O, Jupyter, PTY (port 44772)
+- `components/ingress/` — traffic proxy for sandbox port routing; renew-intent Redis side-channel
+- `components/egress/` — per-sandbox network egress controls (DNS proxy + nftables + mitmproxy sidecar, port 18080)
+- `components/internal/` — shared Go utilities (logger, telemetry, safego) used by all three components
 - `console/` — React management UI; sandbox CRUD, pool management, SSE console
+- `sandboxes/` — runtime sandbox images (code-interpreter, claude-agent-server)
 
 ## Cross-Module Flows
 
@@ -107,15 +109,31 @@ cd console && npm run dev
 - Requires Docker for local execution; Python 3.10+ for server and examples.
 - `SANDBOX_CONFIG_PATH` env var overrides the default config file location.
 - The console UI dev proxy expects the server on `localhost:8080` by default.
-- For Kubernetes deployment, see `kubernetes/CLAUDE.md` and `kubernetes/charts/`.
+- For Kubernetes deployment, see `kubernetes/AGENTS.md` and `kubernetes/charts/`.
 
 ## Local Guides
 
-- [`server/CLAUDE.md`](server/CLAUDE.md) — lifecycle server, FastAPI routes, test commands
-- [`specs/CLAUDE.md`](specs/CLAUDE.md) — OpenAPI contracts, regeneration workflow
-- [`sdks/CLAUDE.md`](sdks/CLAUDE.md) — multi-language SDKs, generated code, build commands
-- [`kubernetes/CLAUDE.md`](kubernetes/CLAUDE.md) — operator, CRDs, Helm, E2E tests
+- [`server/AGENTS.md`](server/AGENTS.md) — lifecycle server, FastAPI routes, test commands
+- [`specs/AGENTS.md`](specs/AGENTS.md) — OpenAPI contracts, regeneration workflow
+- [`sdks/AGENTS.md`](sdks/AGENTS.md) — multi-language SDKs, generated code, build commands
+- [`kubernetes/AGENTS.md`](kubernetes/AGENTS.md) — operator, CRDs, Helm, E2E tests
 - [`console/CLAUDE.md`](console/CLAUDE.md) — React web UI, API client, build and dev
+- [`components/execd/AGENTS.md`](components/execd/AGENTS.md) — in-sandbox execution daemon
+- [`components/ingress/AGENTS.md`](components/ingress/AGENTS.md) — sandbox traffic proxy
+- [`components/egress/AGENTS.md`](components/egress/AGENTS.md) — network egress control
+- [`components/internal/AGENTS.md`](components/internal/AGENTS.md) — shared Go utilities
+- [`cli/AGENTS.md`](cli/AGENTS.md) — `osb` CLI
+- [`tests/AGENTS.md`](tests/AGENTS.md) — cross-component E2E test suites
+
+## Critical Constraints
+
+- `pause`/`resume` return **501 Not Implemented** on the Kubernetes runtime.
+- Pool management APIs return **501** on Docker runtime.
+- `opensandbox.io/` metadata prefix is **system-reserved** — user requests with this prefix are rejected HTTP 400.
+- In `server/main.py`: `devops_router` and `pool_router` MUST be registered **before** `proxy_router` (catch-all).
+- `components/execd`: do NOT forward `SIGURG` to child processes (used by Go runtime for goroutine preemption).
+- `sdks/sandbox/javascript/src/models/`: these are **intentionally NOT generated** — stable JS-friendly wrappers over potentially volatile OpenAPI schemas.
+- `kubernetes/internal/scheduler/recovery.go`: task recovery has a known at-least-once race — duplicate task execution is possible on restart.
 
 ## Guardrails
 

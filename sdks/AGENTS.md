@@ -12,22 +12,52 @@ If the task is driven by spec changes, also read `../specs/AGENTS.md`.
 
 ## Key Areas
 
-- `sandbox/python`, `sandbox/javascript`, `sandbox/kotlin`, `sandbox/csharp`
+- `sandbox/python`, `sandbox/javascript`, `sandbox/kotlin`, `sandbox/csharp`, `sandbox/go`
 - `code-interpreter/python`, `code-interpreter/javascript`, `code-interpreter/kotlin`, `code-interpreter/csharp`
-- `mcp/`
-- Workspace config in `package.json`, `pnpm-workspace.yaml`, and shared build files
+- `mcp/sandbox/python/` — standalone MCP server (`opensandbox-mcp`), wraps Python sandbox SDK
+- Workspace config: `package.json`, `pnpm-workspace.yaml` (JS only), `tsconfig.base.json`, `eslint.base.mjs`, `Directory.Build.props` (C# versions)
 
 ## Generated Code
 
 Do not manually edit generated code as the only fix.
 
-Generator-owned paths include:
+Generator-owned paths:
 
-- `sandbox/python/src/opensandbox/api/**`
-- `sandbox/javascript/src/api/*.ts`
-- `sandbox/kotlin/sandbox-api/build/generated/**`
+| SDK | Generated path | Generator |
+|-----|---------------|-----------|
+| Python | `sandbox/python/src/opensandbox/api/**` | `openapi-python-client` |
+| JS/TS | `sandbox/javascript/src/api/*.ts` | `openapi-typescript` (type-only) |
+| Kotlin | `sandbox-api/build/generated/**` | Gradle `openapi-generator` plugin |
+| Go | `sandbox/go/api/{lifecycle,execd,egress}/gen.go` | `oapi-codegen` v2.6.0 |
+| C# | **None** — fully handwritten | — |
 
 Handwritten logic belongs in adapters, services, facades, converters, and stable SDK models.
+
+**Non-obvious**: `sandbox/javascript/src/models/` types are intentionally NOT generated — they are stable JS-friendly wrappers over volatile OpenAPI schemas. Do not replace them with generated types.
+
+**Go SDK**: specs are vendored in `sandbox/go/api/specs/` — update when `specs/` changes.
+
+**Python sync mirror**: `sandbox/python/src/opensandbox/sync/` is a full synchronous mirror of the async API. Changes to the async layer usually require a parallel change to `sync/`.
+
+## SDK Architecture Per Language
+
+| Layer | Python | JS/TS | Kotlin | C# | Go |
+|-------|--------|-------|--------|----|----|
+| Public facade | `sandbox.py` | `sandbox.ts` | `Sandbox.kt` | `Sandbox.cs` | `sandbox.go` |
+| Services | `services/` | `services/` | `domain/services/` | `Services/` | (flat package) |
+| Adapters | `adapters/` | `adapters/` | `infrastructure/adapters/` | `Adapters/` | — |
+| Generated clients | `api/` | `src/api/*.ts` | `sandbox-api/build/generated/` | — | `api/*/gen.go` |
+
+## Version Locations
+
+| SDK | Version file | Tag pattern |
+|-----|-------------|-------------|
+| Python sandbox | `pyproject.toml` (VCS) | `python/sandbox/v*` |
+| Python MCP | `pyproject.toml` (VCS) | `python/mcp/sandbox/v*` |
+| JS/TS | `sandbox/javascript/package.json` | — |
+| Kotlin | `sandbox/kotlin/gradle.properties` | — |
+| C# | `Directory.Build.props` (`OpenSandboxPackageVersion`) | — |
+| Go | git tag on module path | — |
 
 ## Commands
 
