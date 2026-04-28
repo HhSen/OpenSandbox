@@ -8,12 +8,12 @@ spec:
     spec:
       containers:
       - name: sandbox-container
-        image: {{.SandboxImage}}
-        command: ["sleep", "3600"]
+        image: {{.SandboxImage}}{{ if .Command}}
+        command: {{.Command}}{{ end}}
   capacitySpec:
     bufferMax: {{.BufferMax}}
     bufferMin: {{.BufferMin}}
     poolMax: {{.PoolMax}}
     poolMin: {{.PoolMin}}
   recycleStrategy:
-    type: Noop
+    type: {{.RecycleType}}

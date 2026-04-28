@@ -179,6 +179,7 @@ class Sandbox internal constructor(
             timeout: Duration,
             healthCheckPollingInterval: Duration,
             skipHealthCheck: Boolean,
+            execdPort: Int = DEFAULT_EXECD_PORT,
             initAction: (Sandboxes) -> InitializationResult,
         ): Sandbox {
             logger.info("Starting {} operation", operationName)
@@ -197,7 +198,7 @@ class Sandbox internal constructor(
                 val execdEndpoint =
                     sandboxService.getSandboxEndpoint(
                         sandboxId,
-                        DEFAULT_EXECD_PORT,
+                        execdPort,
                         connectionConfig.useServerProxy,
                     )
                 val fileSystemService = factory.createFilesystem(execdEndpoint)
@@ -347,6 +348,7 @@ class Sandbox internal constructor(
             connectTimeout: Duration,
             healthCheckPollingInterval: Duration,
             skipHealthCheck: Boolean,
+            execdPort: Int = DEFAULT_EXECD_PORT,
         ): Sandbox {
             return initializeSandbox(
                 operationName = "connect to sandbox $sandboxId",
@@ -355,6 +357,7 @@ class Sandbox internal constructor(
                 timeout = connectTimeout,
                 healthCheckPollingInterval = healthCheckPollingInterval,
                 skipHealthCheck = skipHealthCheck,
+                execdPort = execdPort,
             ) { _ ->
                 InitializationResult.ExistingSandbox(sandboxId)
             }
@@ -667,6 +670,11 @@ class Sandbox internal constructor(
         private var skipHealthCheck: Boolean = false
 
         /**
+         * Custom execd port. Defaults to [DEFAULT_EXECD_PORT] (44772) when not set.
+         */
+        private var execdPort: Int = DEFAULT_EXECD_PORT
+
+        /**
          * Sets the sandbox ID to connect to.
          *
          * @param sandboxId ID of the existing sandbox
@@ -713,6 +721,16 @@ class Sandbox internal constructor(
         }
 
         /**
+         * Sets the execd port used to communicate with the sandbox.
+         *
+         * Defaults to [DEFAULT_EXECD_PORT] (44772) when not set.
+         */
+        fun execdPort(port: Int): Connector {
+            this.execdPort = port
+            return this
+        }
+
+        /**
          * Connects to the existing sandbox with the configured parameters.
          *
          * This method performs the following steps:
@@ -737,6 +755,7 @@ class Sandbox internal constructor(
                 connectTimeout = connectTimeout,
                 healthCheckPollingInterval = healthCheckPollingInterval,
                 skipHealthCheck = skipHealthCheck,
+                execdPort = execdPort,
             )
         }
     }
