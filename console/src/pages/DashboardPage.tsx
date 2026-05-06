@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ConsolePanelDrawer } from '@/features/console/ConsolePanelDrawer.tsx'
 import { DiagnosticsDrawer } from '@/features/diagnostics/DiagnosticsDrawer.tsx'
+import { TerminalPanel } from '@/features/terminal/TerminalPanel.tsx'
 import { useAutoRenew } from '@/hooks/useAutoRenew.ts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -34,6 +35,7 @@ export function DashboardPage() {
   const [renewing, setRenewing] = useState<string | null>(null)
   const [consoleSandbox, setConsoleSandbox] = useState<Sandbox | null>(null)
   const [diagSandbox, setDiagSandbox] = useState<Sandbox | null>(null)
+  const [terminalSandbox, setTerminalSandbox] = useState<Sandbox | null>(null)
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['sandboxes'],
@@ -174,6 +176,9 @@ export function DashboardPage() {
                         <DropdownMenuItem onClick={() => setConsoleSandbox(sb)}>
                           Open Console
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setTerminalSandbox(sb)}>
+                          Open Terminal
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setDiagSandbox(sb)}>
                           View Diagnostics
                         </DropdownMenuItem>
@@ -254,6 +259,13 @@ export function DashboardPage() {
         <DiagnosticsDrawer
           sandbox={diagSandbox}
           onClose={() => setDiagSandbox(null)}
+        />
+      )}
+
+      {terminalSandbox && (
+        <TerminalPanel
+          sandbox={terminalSandbox}
+          onClose={() => setTerminalSandbox(null)}
         />
       )}
     </div>
