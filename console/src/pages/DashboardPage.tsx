@@ -156,7 +156,7 @@ export function DashboardPage() {
                   <td className="px-4 py-3">
                     <StatusBadge state={sb.status.state} />
                   </td>
-                  <td className="px-4 py-3 text-neutral-400 hidden md:table-cell text-xs truncate max-w-[200px]">
+                  <td className="px-4 py-3 text-neutral-400 hidden md:table-cell text-xs truncate max-w-50">
                     {sb.image.uri}
                   </td>
                   <td className="px-4 py-3 text-neutral-400 hidden lg:table-cell text-xs">
