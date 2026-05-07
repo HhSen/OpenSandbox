@@ -55,6 +55,16 @@ def _app_config_with_execd_resources(execd_init_resources: ExecdInitResources) -
         ),
     )
 
+def _app_config_with_image_pull_policy(image_pull_policy: str) -> AppConfig:
+    """Build an AppConfig with image_pull_policy set."""
+    return AppConfig(
+        runtime=RuntimeConfig(type="kubernetes", execd_image="execd:test"),
+        kubernetes=KubernetesRuntimeConfig(
+            namespace="test-ns",
+            image_pull_policy=image_pull_policy,
+        ),
+    )
+
 def _app_config_with_egress_disable_ipv6(disable_ipv6: bool = True) -> AppConfig:
     """Build an AppConfig with ``egress.disable_ipv6`` set (privileged execd init when egress is used)."""
     return AppConfig(
@@ -376,6 +386,31 @@ spec:
         init_container = body["spec"]["template"]["spec"]["initContainers"][0]
         assert init_container["resources"]["limits"] == {"cpu": "100m", "memory": "128Mi"}
         assert init_container["resources"]["requests"] == {"cpu": "50m", "memory": "64Mi"}
+
+    def test_create_workload_sets_configured_image_pull_policy(self, mock_k8s_client):
+        provider = BatchSandboxProvider(
+            mock_k8s_client,
+            _app_config_with_image_pull_policy("Always"),
+        )
+        mock_k8s_client.create_custom_object.return_value = {
+            "metadata": {"name": "test", "uid": "uid"}
+        }
+
+        provider.create_workload(
+            sandbox_id="test-id",
+            namespace="test-ns",
+            image_spec=ImageSpec(uri="python:3.11"),
+            entrypoint=["/bin/bash"],
+            env={},
+            resource_limits={},
+            labels={},
+            expires_at=datetime(2025, 12, 31, tzinfo=timezone.utc),
+            execd_image="execd:test",
+        )
+
+        body = mock_k8s_client.create_custom_object.call_args.kwargs["body"]
+        main_container = body["spec"]["template"]["spec"]["containers"][0]
+        assert main_container["imagePullPolicy"] == "Always"
     
     def test_create_workload_wraps_entrypoint_with_bootstrap(self, mock_k8s_client):
         provider = BatchSandboxProvider(mock_k8s_client)
@@ -771,9 +806,9 @@ spec:
     ):
         provider = BatchSandboxProvider(mock_k8s_client)
         mock_k8s_client.get_custom_object.return_value = mock_batchsandbox_list_response["items"][0]
-        
+
         provider.delete_workload("test-id", "test-ns")
-        
+
         mock_k8s_client.delete_custom_object.assert_called_once_with(
             group="sandbox.opensandbox.io",
             version="v1alpha1",
@@ -786,10 +821,10 @@ spec:
     def test_delete_workload_raises_when_not_found(self, mock_k8s_client):
         provider = BatchSandboxProvider(mock_k8s_client)
         mock_k8s_client.get_custom_object.return_value = None
-        
+
         with pytest.raises(Exception) as exc_info:
             provider.delete_workload("test-id", "test-ns")
-        
+
         assert "not found" in str(exc_info.value)
     
     def test_delete_workload_sets_grace_period_zero(
@@ -797,9 +832,9 @@ spec:
     ):
         provider = BatchSandboxProvider(mock_k8s_client)
         mock_k8s_client.get_custom_object.return_value = mock_batchsandbox_list_response["items"][0]
-        
+
         provider.delete_workload("test-id", "test-ns")
-        
+
         call_kwargs = mock_k8s_client.delete_custom_object.call_args.kwargs
         assert call_kwargs["grace_period_seconds"] == 0
     
@@ -1540,7 +1575,7 @@ class TestBatchSandboxProviderEgress:
             expires_at=expires_at,
             execd_image="execd:latest",
             network_policy=network_policy,
-            egress_image="opensandbox/egress:v1.0.9",
+            egress_image="opensandbox/egress:v1.0.10",
         )
 
         body = mock_k8s_client.create_custom_object.call_args.kwargs["body"]
@@ -1553,7 +1588,7 @@ class TestBatchSandboxProviderEgress:
         # Find sidecar container
         sidecar = next((c for c in containers if c["name"] == "egress"), None)
         assert sidecar is not None
-        assert sidecar["image"] == "opensandbox/egress:v1.0.9"
+        assert sidecar["image"] == "opensandbox/egress:v1.0.10"
         
         # Verify sidecar has environment variable
         env_vars = {e["name"]: e["value"] for e in sidecar.get("env", [])}
@@ -1594,7 +1629,7 @@ class TestBatchSandboxProviderEgress:
             execd_image="execd:latest",
             platform=PlatformSpec(os="windows", arch="amd64"),
             network_policy=NetworkPolicy(default_action="deny", egress=[]),
-            egress_image="opensandbox/egress:v1.0.9",
+            egress_image="opensandbox/egress:v1.0.10",
         )
 
         body = mock_k8s_client.create_custom_object.call_args.kwargs["body"]
@@ -1631,7 +1666,7 @@ class TestBatchSandboxProviderEgress:
             expires_at=None,
             execd_image="execd:latest",
             network_policy=NetworkPolicy(default_action="deny", egress=[]),
-            egress_image="opensandbox/egress:v1.0.9",
+            egress_image="opensandbox/egress:v1.0.10",
             annotations={SANDBOX_EGRESS_AUTH_TOKEN_METADATA_KEY: "egress-token"},
             egress_auth_token="egress-token",
         )
@@ -1663,7 +1698,7 @@ class TestBatchSandboxProviderEgress:
             expires_at=None,
             execd_image="execd:latest",
             network_policy=NetworkPolicy(default_action="deny", egress=[]),
-            egress_image="opensandbox/egress:v1.0.9",
+            egress_image="opensandbox/egress:v1.0.10",
             egress_mode=EGRESS_MODE_DNS_NFT,
         )
 
@@ -1701,7 +1736,7 @@ class TestBatchSandboxProviderEgress:
             expires_at=expires_at,
             execd_image="execd:latest",
             network_policy=network_policy,
-            egress_image="opensandbox/egress:v1.0.9",
+            egress_image="opensandbox/egress:v1.0.10",
         )
 
         body = mock_k8s_client.create_custom_object.call_args.kwargs["body"]
@@ -1741,7 +1776,7 @@ class TestBatchSandboxProviderEgress:
             expires_at=None,
             execd_image="execd:latest",
             network_policy=network_policy,
-            egress_image="opensandbox/egress:v1.0.9",
+            egress_image="opensandbox/egress:v1.0.10",
         )
 
         body = mock_k8s_client.create_custom_object.call_args.kwargs["body"]
@@ -1774,7 +1809,7 @@ class TestBatchSandboxProviderEgress:
             expires_at=expires_at,
             execd_image="execd:latest",
             network_policy=network_policy,
-            egress_image="opensandbox/egress:v1.0.9",
+            egress_image="opensandbox/egress:v1.0.10",
         )
 
         body = mock_k8s_client.create_custom_object.call_args.kwargs["body"]
@@ -1851,7 +1886,7 @@ class TestBatchSandboxProviderEgress:
             expires_at=expires_at,
             execd_image="execd:latest",
             network_policy=network_policy,
-            egress_image="opensandbox/egress:v1.0.9",
+            egress_image="opensandbox/egress:v1.0.10",
         )
 
         body = mock_k8s_client.create_custom_object.call_args.kwargs["body"]
@@ -1936,7 +1971,7 @@ spec:
             expires_at=expires_at,
             execd_image="execd:latest",
             network_policy=network_policy,
-            egress_image="opensandbox/egress:v1.0.9",
+            egress_image="opensandbox/egress:v1.0.10",
         )
 
         body = mock_k8s_client.create_custom_object.call_args.kwargs["body"]
@@ -1957,6 +1992,292 @@ spec:
         volume_names = [v["name"] for v in pod_spec["volumes"]]
         assert "sandbox-shared-data" in volume_names
         assert "opensandbox-bin" in volume_names
+
+    # ===== Phase + Condition Validation Tests =====
+
+    def test_pause_sandbox_running_allows(self, mock_k8s_client):
+        """Test pause allowed when Phase=Succeed."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Succeed", "conditions": []}
+        }
+        mock_k8s_client.patch_custom_object.return_value = {}
+
+        provider.pause_sandbox("test-id", "test-ns")
+
+        mock_k8s_client.patch_custom_object.assert_called_once()
+        call_kwargs = mock_k8s_client.patch_custom_object.call_args.kwargs
+        assert call_kwargs["body"] == {"spec": {"pause": True}}
+
+    def test_pause_sandbox_running_with_pause_failed_allows_retry(self, mock_k8s_client):
+        """Test pause retry performs an internal nil->true double patch."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {
+                "phase": "Succeed",
+                "conditions": [{"type": "PauseFailed", "status": "True", "reason": "SnapshotFailed"}]
+            }
+        }
+        mock_k8s_client.patch_custom_object.return_value = {}
+
+        provider.pause_sandbox("test-id", "test-ns")
+
+        assert mock_k8s_client.patch_custom_object.call_count == 2
+        first_patch = mock_k8s_client.patch_custom_object.call_args_list[0].kwargs["body"]
+        second_patch = mock_k8s_client.patch_custom_object.call_args_list[1].kwargs["body"]
+        assert first_patch == {"spec": {"pause": None}}
+        assert second_patch == {"spec": {"pause": True}}
+
+    def test_patch_pause_with_retry_bridge_accepts_second_patch_timeout_when_readback_matches_target(self, mock_k8s_client):
+        provider = BatchSandboxProvider(mock_k8s_client)
+        provider.patch_workload = MagicMock(side_effect=[{}, ApiException(status=500, reason="timeout")])
+        provider.get_workload = MagicMock(
+            return_value={
+                "metadata": {"name": "test-id", "namespace": "test-ns"},
+                "spec": {"pause": True},
+            }
+        )
+
+        provider._patch_pause_with_retry_bridge("test-id", "test-ns", True)
+
+        assert provider.patch_workload.call_count == 2
+        first_call = provider.patch_workload.call_args_list[0].args
+        second_call = provider.patch_workload.call_args_list[1].args
+        assert first_call == ("test-id", "test-ns", {"spec": {"pause": None}})
+        assert second_call == ("test-id", "test-ns", {"spec": {"pause": True}})
+        provider.get_workload.assert_called_once_with("test-id", "test-ns")
+
+    def test_patch_pause_with_retry_bridge_retries_target_when_readback_still_nil(self, mock_k8s_client):
+        provider = BatchSandboxProvider(mock_k8s_client)
+        provider.patch_workload = MagicMock(side_effect=[{}, ApiException(status=500, reason="timeout"), {}])
+        provider.get_workload = MagicMock(
+            return_value={
+                "metadata": {"name": "test-id", "namespace": "test-ns"},
+                "spec": {"pause": None},
+            }
+        )
+
+        provider._patch_pause_with_retry_bridge("test-id", "test-ns", True)
+
+        assert provider.patch_workload.call_count == 3
+        first_call = provider.patch_workload.call_args_list[0].args
+        second_call = provider.patch_workload.call_args_list[1].args
+        third_call = provider.patch_workload.call_args_list[2].args
+        assert first_call == ("test-id", "test-ns", {"spec": {"pause": None}})
+        assert second_call == ("test-id", "test-ns", {"spec": {"pause": True}})
+        assert third_call == ("test-id", "test-ns", {"spec": {"pause": True}})
+        provider.get_workload.assert_called_once_with("test-id", "test-ns")
+
+    def test_pause_sandbox_pausing_rejects(self, mock_k8s_client):
+        """Test pause rejected when Phase=Pausing."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Pausing", "conditions": []}
+        }
+
+        with pytest.raises(ValueError, match="operation in progress"):
+            provider.pause_sandbox("test-id", "test-ns")
+
+    def test_pause_sandbox_resuming_rejects(self, mock_k8s_client):
+        """Test pause rejected when Phase=Resuming."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Resuming", "conditions": []}
+        }
+
+        with pytest.raises(ValueError, match="operation in progress"):
+            provider.pause_sandbox("test-id", "test-ns")
+
+    def test_pause_sandbox_paused_rejects(self, mock_k8s_client):
+        """Test pause rejected when Phase=Paused."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Paused", "conditions": []}
+        }
+
+        with pytest.raises(ValueError, match="already paused"):
+            provider.pause_sandbox("test-id", "test-ns")
+
+    def test_pause_sandbox_failed_rejects(self, mock_k8s_client):
+        """Test pause rejected when Phase=Failed."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Failed", "conditions": []}
+        }
+
+        with pytest.raises(ValueError, match="not available"):
+            provider.pause_sandbox("test-id", "test-ns")
+
+    def test_pause_sandbox_failed_with_pause_failed_rejects(self, mock_k8s_client):
+        """Test pause rejected when Phase=Failed + PauseFailed=True (pod loss scenario)."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {
+                "phase": "Failed",
+                "conditions": [{"type": "PauseFailed", "status": "True", "reason": "PodNotFound"}]
+            }
+        }
+
+        with pytest.raises(ValueError, match="pause caused pod loss"):
+            provider.pause_sandbox("test-id", "test-ns")
+
+    def test_pause_sandbox_pending_rejects(self, mock_k8s_client):
+        """Test pause rejected when Phase=Pending."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Pending", "conditions": []}
+        }
+
+        with pytest.raises(ValueError, match="being created"):
+            provider.pause_sandbox("test-id", "test-ns")
+
+    def test_resume_sandbox_paused_allows(self, mock_k8s_client):
+        """Test resume allowed when Phase=Paused."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Paused", "conditions": []}
+        }
+        mock_k8s_client.patch_custom_object.return_value = {}
+
+        provider.resume_sandbox("test-id", "test-ns")
+
+        mock_k8s_client.patch_custom_object.assert_called_once()
+        call_kwargs = mock_k8s_client.patch_custom_object.call_args.kwargs
+        assert call_kwargs["body"] == {"spec": {"pause": False}}
+
+    def test_resume_sandbox_paused_with_resume_failed_allows_retry(self, mock_k8s_client):
+        """Test resume retry performs an internal nil->false double patch."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {
+                "phase": "Paused",
+                "conditions": [{"type": "ResumeFailed", "status": "True", "reason": "SnapshotNotReady"}]
+            }
+        }
+        mock_k8s_client.patch_custom_object.return_value = {}
+
+        provider.resume_sandbox("test-id", "test-ns")
+
+        assert mock_k8s_client.patch_custom_object.call_count == 2
+        first_patch = mock_k8s_client.patch_custom_object.call_args_list[0].kwargs["body"]
+        second_patch = mock_k8s_client.patch_custom_object.call_args_list[1].kwargs["body"]
+        assert first_patch == {"spec": {"pause": None}}
+        assert second_patch == {"spec": {"pause": False}}
+
+    def test_resume_sandbox_resuming_rejects(self, mock_k8s_client):
+        """Test resume rejected when Phase=Resuming."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Resuming", "conditions": []}
+        }
+
+        with pytest.raises(ValueError, match="operation in progress"):
+            provider.resume_sandbox("test-id", "test-ns")
+
+    def test_resume_sandbox_pausing_rejects(self, mock_k8s_client):
+        """Test resume rejected when Phase=Pausing."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Pausing", "conditions": []}
+        }
+
+        with pytest.raises(ValueError, match="operation in progress"):
+            provider.resume_sandbox("test-id", "test-ns")
+
+    def test_resume_sandbox_running_rejects(self, mock_k8s_client):
+        """Test resume rejected when Phase=Succeed."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Succeed", "conditions": []}
+        }
+
+        with pytest.raises(ValueError, match="expected Paused"):
+            provider.resume_sandbox("test-id", "test-ns")
+
+    def test_get_status_succeed_phase_maps_to_running_state(self):
+        provider = BatchSandboxProvider(MagicMock())
+        workload = {
+            "status": {"phase": "Succeed"},
+            "metadata": {"creationTimestamp": "2025-12-24T10:00:00Z"},
+        }
+
+        result = provider.get_status(workload)
+
+        assert result["state"] == "Running"
+        assert result["reason"] == "RUNNING"
+        assert result["message"] == "Sandbox is running"
+
+    def test_get_status_failed_uses_condition_message(self):
+        provider = BatchSandboxProvider(MagicMock())
+        workload = {
+            "status": {
+                "phase": "Failed",
+                "conditions": [
+                    {
+                        "type": "ResumeFailed",
+                        "status": "True",
+                        "reason": "PodStartFailed",
+                        "message": "Pod sandbox-abc-0: ImagePullBackOff - image not found",
+                    }
+                ],
+            },
+            "metadata": {"creationTimestamp": "2025-12-24T10:00:00Z"},
+        }
+
+        result = provider.get_status(workload)
+
+        assert result["state"] == "Failed"
+        assert result["reason"] == "FAILED"
+        assert result["message"] == "Pod sandbox-abc-0: ImagePullBackOff - image not found"
+
+    def test_resume_sandbox_failed_rejects(self, mock_k8s_client):
+        """Test resume rejected when Phase=Failed."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Failed", "conditions": []}
+        }
+
+        with pytest.raises(ValueError, match="not available"):
+            provider.resume_sandbox("test-id", "test-ns")
+
+    def test_resume_sandbox_failed_with_resume_failed_rejects(self, mock_k8s_client):
+        """Test resume rejected when Phase=Failed + ResumeFailed=True (pod start failure)."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {
+                "phase": "Failed",
+                "conditions": [{"type": "ResumeFailed", "status": "True", "reason": "PodStartFailed"}]
+            }
+        }
+
+        with pytest.raises(ValueError, match="resume caused pod start failure"):
+            provider.resume_sandbox("test-id", "test-ns")
+
+    def test_resume_sandbox_pending_rejects(self, mock_k8s_client):
+        """Test resume rejected when Phase=Pending."""
+        provider = BatchSandboxProvider(mock_k8s_client)
+        mock_k8s_client.get_custom_object.return_value = {
+            "metadata": {"name": "test-id", "namespace": "test-ns"},
+            "status": {"phase": "Pending", "conditions": []}
+        }
+
+        with pytest.raises(ValueError, match="being created"):
+            provider.resume_sandbox("test-id", "test-ns")
 
     # ===== Image Auth Tests =====
 

@@ -23,8 +23,10 @@ import com.alibaba.opensandbox.sandbox.api.models.Endpoint
 import com.alibaba.opensandbox.sandbox.api.models.ImageSpec
 import com.alibaba.opensandbox.sandbox.api.models.ImageSpecAuth
 import com.alibaba.opensandbox.sandbox.api.models.ListSandboxesResponse
+import com.alibaba.opensandbox.sandbox.api.models.ListSnapshotsResponse
 import com.alibaba.opensandbox.sandbox.api.models.RenewSandboxExpirationRequest
 import com.alibaba.opensandbox.sandbox.api.models.RenewSandboxExpirationResponse
+import com.alibaba.opensandbox.sandbox.api.models.Snapshot
 import com.alibaba.opensandbox.sandbox.api.models.execd.Metrics
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.Host
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.NetworkPolicy
@@ -32,6 +34,7 @@ import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.NetworkRule
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.OSSFS
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PVC
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PagedSandboxInfos
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PagedSnapshotInfos
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PaginationInfo
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PlatformSpec
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxCreateResponse
@@ -41,6 +44,8 @@ import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxImageSpec
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxInfo
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxMetrics
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxRenewResponse
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SnapshotInfo
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SnapshotStatus
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.Volume
 import java.time.Duration
 import java.time.OffsetDateTime
@@ -238,8 +243,8 @@ internal object SandboxModelConverter {
     }
 
     fun toApiCreateSandboxRequest(
-        spec: SandboxImageSpec,
-        entrypoint: List<String>,
+        spec: SandboxImageSpec?,
+        entrypoint: List<String>?,
         env: Map<String, String>,
         metadata: Map<String, String>,
         timeout: Duration?,
@@ -249,9 +254,11 @@ internal object SandboxModelConverter {
         secureAccess: Boolean,
         extensions: Map<String, String>,
         volumes: List<Volume>?,
+        snapshotId: String?,
     ): CreateSandboxRequest {
         return CreateSandboxRequest(
-            image = spec.toApiImageSpec(),
+            image = spec?.toApiImageSpec(),
+            snapshotId = snapshotId,
             entrypoint = entrypoint,
             timeout = timeout?.seconds?.toInt(),
             env = env,
@@ -301,10 +308,8 @@ internal object SandboxModelConverter {
             entrypoint = this.entrypoint,
             expiresAt = this.expiresAt,
             createdAt = this.createdAt,
-            image =
-                requireNotNull(this.image) {
-                    "Sandbox image is missing from API response. Snapshot-based sandbox responses are not supported by this SDK yet."
-                }.toImageSpec(),
+            image = this.image?.toImageSpec(),
+            snapshotId = this.snapshotId,
             platform = this.platform?.toDomainPlatformSpec(),
             status = this.status.toSandboxStatus(),
             metadata = metadata,
@@ -376,6 +381,29 @@ internal object SandboxModelConverter {
     fun ListSandboxesResponse.toPagedSandboxInfos(): PagedSandboxInfos {
         return PagedSandboxInfos(
             items.map { it.toSandboxInfo() },
+            pagination.toPaginationInfo(),
+        )
+    }
+
+    fun Snapshot.toSnapshotInfo(): SnapshotInfo {
+        return SnapshotInfo(
+            id = this.id,
+            sandboxId = this.sandboxId,
+            name = this.name,
+            status =
+                SnapshotStatus(
+                    state = this.status.state,
+                    reason = this.status.reason,
+                    message = this.status.message,
+                    lastTransitionAt = this.status.lastTransitionAt,
+                ),
+            createdAt = this.createdAt,
+        )
+    }
+
+    fun ListSnapshotsResponse.toPagedSnapshotInfos(): PagedSnapshotInfos {
+        return PagedSnapshotInfos(
+            items.map { it.toSnapshotInfo() },
             pagination.toPaginationInfo(),
         )
     }

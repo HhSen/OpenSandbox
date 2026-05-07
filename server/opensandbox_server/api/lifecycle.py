@@ -19,6 +19,7 @@ This module defines FastAPI routes that map to the OpenAPI specification endpoin
 All business logic is delegated to the service layer that backs each operation.
 """
 
+import asyncio
 from typing import List, Optional
 
 from fastapi import APIRouter, Header, Query, Request, status
@@ -27,10 +28,13 @@ from fastapi.responses import Response
 from opensandbox_server.extensions import validate_extensions
 from opensandbox_server.config import get_config
 from opensandbox_server.api.schema import (
+    CreateSnapshotRequest,
     CreateSandboxRequest,
     CreateSandboxResponse,
     Endpoint,
     ErrorResponse,
+    ListSnapshotsRequest,
+    ListSnapshotsResponse,
     ListSandboxesRequest,
     ListSandboxesResponse,
     PaginationRequest,
@@ -38,14 +42,18 @@ from opensandbox_server.api.schema import (
     RenewSandboxExpirationResponse,
     Sandbox,
     SandboxFilter,
+    Snapshot,
+    SnapshotFilter,
 )
 from opensandbox_server.services.factory import create_sandbox_service
+from opensandbox_server.services.snapshot_service import create_snapshot_service
 
 # Initialize router
 router = APIRouter(tags=["Sandboxes"])
 
 # Initialize service based on configuration from config.toml (defaults to docker)
 sandbox_service = create_sandbox_service()
+snapshot_service = create_snapshot_service(sandbox_service)
 
 
 # ============================================================================
@@ -251,7 +259,7 @@ async def pause_sandbox(
     Pause execution while retaining state.
 
     Pauses a running sandbox while preserving its state.
-    Poll GET /sandboxes/{sandboxId} to track state transition to Paused.
+    Poll GET /sandboxes/{sandboxId} to track state transition through Pausing and eventually Paused.
 
     Args:
         sandbox_id: Unique sandbox identifier
@@ -288,7 +296,7 @@ async def resume_sandbox(
     Resume a paused sandbox.
 
     Resumes execution of a paused sandbox.
-    Poll GET /sandboxes/{sandboxId} to track state transition to Running.
+    Poll GET /sandboxes/{sandboxId} to track state transition through Resuming and eventually Running.
 
     Args:
         sandbox_id: Unique sandbox identifier
@@ -343,6 +351,124 @@ async def renew_sandbox_expiration(
     """
     # Delegate to the service layer for expiration updates
     return sandbox_service.renew_expiration(sandbox_id, request)
+
+
+# ============================================================================
+# Snapshot Operations
+# ============================================================================
+
+@router.post(
+    "/sandboxes/{sandbox_id}/snapshots",
+    tags=["Snapshots"],
+    response_model=Snapshot,
+    response_model_exclude_none=True,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        202: {"description": "Snapshot creation accepted"},
+        400: {"model": ErrorResponse, "description": "The request was invalid or malformed"},
+        401: {"model": ErrorResponse, "description": "Authentication credentials are missing or invalid"},
+        403: {"model": ErrorResponse, "description": "The authenticated user lacks permission for this operation"},
+        404: {"model": ErrorResponse, "description": "The requested resource does not exist"},
+        409: {"model": ErrorResponse, "description": "The operation conflicts with the current state"},
+        501: {"model": ErrorResponse, "description": "Snapshot management is not implemented yet"},
+        500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
+    },
+)
+async def create_snapshot(
+    sandbox_id: str,
+    response: Response,
+    request: Optional[CreateSnapshotRequest] = None,
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
+) -> Snapshot:
+    """
+    Create a persistent point-in-time snapshot from a sandbox.
+    """
+    create_request = request or CreateSnapshotRequest()
+    snapshot = await asyncio.to_thread(
+        snapshot_service.create_snapshot,
+        sandbox_id,
+        create_request,
+    )
+    response.headers["Location"] = f"/v1/snapshots/{snapshot.id}"
+    return snapshot
+
+
+@router.get(
+    "/snapshots",
+    tags=["Snapshots"],
+    response_model=ListSnapshotsResponse,
+    response_model_exclude_none=True,
+    responses={
+        200: {"description": "Paginated collection of snapshots"},
+        401: {"model": ErrorResponse, "description": "Authentication credentials are missing or invalid"},
+        501: {"model": ErrorResponse, "description": "Snapshot management is not implemented yet"},
+        500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
+    },
+)
+async def list_snapshots(
+    sandbox_id: Optional[str] = Query(None, alias="sandboxId", description="Filter snapshots by source sandbox identifier"),
+    state: Optional[List[str]] = Query(None, description="Filter by snapshot lifecycle state. Pass multiple times for OR logic."),
+    page: int = Query(1, ge=1, description="Page number for pagination"),
+    page_size: int = Query(20, ge=1, le=200, alias="pageSize", description="Number of items per page"),
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
+) -> ListSnapshotsResponse:
+    """
+    List snapshots with optional filtering and pagination.
+    """
+    request = ListSnapshotsRequest(
+        filter=SnapshotFilter(sandboxId=sandbox_id, state=state),
+        pagination=PaginationRequest(page=page, pageSize=page_size),
+    )
+    return snapshot_service.list_snapshots(request)
+
+
+@router.get(
+    "/snapshots/{snapshot_id}",
+    tags=["Snapshots"],
+    response_model=Snapshot,
+    response_model_exclude_none=True,
+    responses={
+        200: {"description": "Snapshot current state and metadata"},
+        401: {"model": ErrorResponse, "description": "Authentication credentials are missing or invalid"},
+        403: {"model": ErrorResponse, "description": "The authenticated user lacks permission for this operation"},
+        404: {"model": ErrorResponse, "description": "The requested resource does not exist"},
+        501: {"model": ErrorResponse, "description": "Snapshot management is not implemented yet"},
+        500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
+    },
+)
+async def get_snapshot(
+    snapshot_id: str,
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
+) -> Snapshot:
+    """
+    Fetch a snapshot by id.
+    """
+    return snapshot_service.get_snapshot(snapshot_id)
+
+
+@router.delete(
+    "/snapshots/{snapshot_id}",
+    tags=["Snapshots"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {"description": "Snapshot successfully deleted"},
+        401: {"model": ErrorResponse, "description": "Authentication credentials are missing or invalid"},
+        403: {"model": ErrorResponse, "description": "The authenticated user lacks permission for this operation"},
+        404: {"model": ErrorResponse, "description": "The requested resource does not exist"},
+        409: {"model": ErrorResponse, "description": "The snapshot is not in a deletable state or is still in use"},
+        501: {"model": ErrorResponse, "description": "Snapshot management is not implemented yet"},
+        500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
+    },
+)
+async def delete_snapshot(
+    snapshot_id: str,
+    x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
+) -> Response:
+    """
+    Delete a snapshot by id.
+    """
+    snapshot_service.delete_snapshot(snapshot_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ============================================================================

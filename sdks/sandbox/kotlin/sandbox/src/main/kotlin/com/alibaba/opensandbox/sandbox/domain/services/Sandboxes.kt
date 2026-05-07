@@ -18,6 +18,7 @@ package com.alibaba.opensandbox.sandbox.domain.services
 
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.NetworkPolicy
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PagedSandboxInfos
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PagedSnapshotInfos
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PlatformSpec
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxCreateResponse
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxEndpoint
@@ -25,6 +26,8 @@ import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxFilter
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxImageSpec
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxInfo
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxRenewResponse
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SnapshotFilter
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SnapshotInfo
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.Volume
 import java.time.Duration
 import java.time.OffsetDateTime
@@ -50,11 +53,12 @@ interface Sandboxes {
      * @param secureAccess Whether to enable secured access for sandbox endpoints
      * @param extensions Opaque extension parameters passed through to the server as-is. Prefer namespaced keys
      * @param volumes Optional list of volume mounts for persistent storage
+     * @param snapshotId Optional snapshot identifier used to restore a sandbox instead of booting from an image
      * @return Sandbox creation response containing the sandbox id
      */
     fun createSandbox(
-        spec: SandboxImageSpec,
-        entrypoint: List<String>,
+        spec: SandboxImageSpec?,
+        entrypoint: List<String>?,
         env: Map<String, String>,
         metadata: Map<String, String>,
         timeout: Duration?,
@@ -62,50 +66,9 @@ interface Sandboxes {
         networkPolicy: NetworkPolicy?,
         extensions: Map<String, String>,
         volumes: List<Volume>?,
-    ): SandboxCreateResponse
-
-    /**
-     * Creates a new sandbox with optional runtime platform constraint.
-     *
-     * This default implementation preserves binary compatibility for existing
-     * Sandboxes implementations compiled against the older interface method.
-     */
-    fun createSandbox(
-        spec: SandboxImageSpec,
-        entrypoint: List<String>,
-        env: Map<String, String>,
-        metadata: Map<String, String>,
-        timeout: Duration?,
-        resource: Map<String, String>,
-        networkPolicy: NetworkPolicy?,
-        extensions: Map<String, String>,
-        volumes: List<Volume>?,
-        platform: PlatformSpec?,
-    ): SandboxCreateResponse =
-        createSandbox(
-            spec = spec,
-            entrypoint = entrypoint,
-            env = env,
-            metadata = metadata,
-            timeout = timeout,
-            resource = resource,
-            networkPolicy = networkPolicy,
-            extensions = extensions,
-            volumes = volumes,
-        )
-
-    fun createSandbox(
-        spec: SandboxImageSpec,
-        entrypoint: List<String>,
-        env: Map<String, String>,
-        metadata: Map<String, String>,
-        timeout: Duration?,
-        resource: Map<String, String>,
-        networkPolicy: NetworkPolicy?,
-        extensions: Map<String, String>,
-        volumes: List<Volume>?,
-        platform: PlatformSpec?,
-        secureAccess: Boolean,
+        platform: PlatformSpec? = null,
+        secureAccess: Boolean = false,
+        snapshotId: String? = null,
     ): SandboxCreateResponse
 
     /**
@@ -123,6 +86,17 @@ interface Sandboxes {
      * @return List of sandbox information matching the filter
      */
     fun listSandboxes(filter: SandboxFilter): PagedSandboxInfos
+
+    fun createSnapshot(
+        sandboxId: String,
+        name: String? = null,
+    ): SnapshotInfo
+
+    fun getSnapshot(snapshotId: String): SnapshotInfo
+
+    fun listSnapshots(filter: SnapshotFilter): PagedSnapshotInfos
+
+    fun deleteSnapshot(snapshotId: String)
 
     /**
      * Get sandbox endpoint

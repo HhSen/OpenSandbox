@@ -15,7 +15,7 @@ info:
     1. **Creation** → Sandbox enters `Pending` state (auto-starts)
     2. **Execution** → Transitions to `Running` state
     3. **Pause** (optional) → `Pausing` → `Paused` (asynchronous process)
-    4. **Resume** (optional) → Returns to `Running` from `Paused`
+    4. **Resume** (optional) → `Resuming` → `Running` (asynchronous process)
     5. **Termination** → `Stopping` → `Terminated` (can be triggered by kill action, TTL expiry, or error)
     6. **Error** → Any state can transition to `Failed` on critical errors
 
@@ -117,8 +117,8 @@ paths:
         - `snapshotId` to restore from a previously created snapshot.
 
         When `image` is provided, `entrypoint` is required. When `snapshotId` is
-        provided, `entrypoint` must be omitted because the restored snapshot carries
-        its startup process.
+        provided, `entrypoint` is optional. If omitted, the server defaults the
+        sandbox entrypoint to `["tail", "-f", "/dev/null"]`.
 
         ## Authentication
 
@@ -192,6 +192,15 @@ paths:
                   resourceLimits:
                     cpu: "500m"
                     memory: "512Mi"
+              restore-snapshot-with-entrypoint:
+                summary: Restore from a snapshot with a custom entrypoint
+                value:
+                  snapshotId: snap_123
+                  timeout: 3600
+                  resourceLimits:
+                    cpu: "500m"
+                    memory: "512Mi"
+                  entrypoint: ["python", "/workspace/app.py"]
       responses:
         '202':
           description: |
@@ -302,12 +311,21 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
     delete:
       tags: [Snapshots]
       summary: Delete a snapshot
-      description: Delete a persistent sandbox snapshot by id.
+      description: |
+        Delete a persistent sandbox snapshot by id. Snapshots that are still
+        being created cannot be deleted.
+
+        For Kubernetes-backed snapshots, deletion removes OpenSandbox metadata
+        and Kubernetes coordination resources, but does not guarantee removal
+        of pushed OCI images from the configured registry. Use registry
+        retention or garbage collection policies for image lifecycle cleanup.
       responses:
         '204':
           description: Snapshot successfully deleted
@@ -320,6 +338,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
   /sandboxes/{sandboxId}:
@@ -382,8 +402,10 @@ paths:
       summary: Create a snapshot from a sandbox
       description: |
         Create a persistent point-in-time snapshot from the sandbox's current state.
-        The returned snapshot id identifies the created artifact. Snapshot creation may
-        temporarily pause the sandbox while the runtime captures provider-supported state.
+        The source sandbox must be `Running`. The returned snapshot id identifies
+        the created artifact. Snapshot creation may temporarily pause the sandbox
+        while the runtime captures provider-supported state, then the source
+        sandbox continues running.
       parameters:
         - $ref: '#/components/parameters/SandboxId'
       requestBody:
@@ -433,7 +455,7 @@ paths:
     post:
       tags: [Sandboxes]
       summary: Pause execution while retaining state
-      description: Pause a running sandbox while preserving its state. Poll GET /sandboxes/{sandboxId} to track state transition to Paused.
+      description: Pause a running sandbox while preserving its state. Poll GET /sandboxes/{sandboxId} to track state transition through Pausing and eventually Paused.
       parameters:
         - $ref: '#/components/parameters/SandboxId'
       responses:
@@ -441,7 +463,7 @@ paths:
           description: |
             Pause operation accepted.
 
-            Sandbox will transition to Pausing state.
+            Sandbox will transition to Pausing state and eventually Paused.
             Poll GET /sandboxes/{sandboxId} to track progress.
           headers:
             X-Request-ID:
@@ -460,7 +482,7 @@ paths:
     post:
       tags: [Sandboxes]
       summary: Resume a paused sandbox
-      description: Resume execution of a paused sandbox. Poll GET /sandboxes/{sandboxId} to track state transition to Running.
+      description: Resume execution of a paused sandbox. Poll GET /sandboxes/{sandboxId} to track state transition through Resuming and eventually Running.
       parameters:
         - $ref: '#/components/parameters/SandboxId'
       responses:
@@ -468,7 +490,7 @@ paths:
           description: |
             Resume operation accepted.
 
-            Sandbox will transition from Paused → Running.
+            Sandbox will transition from Paused → Resuming → Running.
             Poll GET /sandboxes/{sandboxId} to track progress.
           headers:
             X-Request-ID:
@@ -827,6 +849,7 @@ components:
 
         Common state values:
         - Creating: Snapshot creation has been accepted and runtime capture is in progress.
+        - Deleting: Snapshot deletion has been requested and cleanup is in progress.
         - Ready: Snapshot is available for restoring sandboxes.
         - Failed: Snapshot creation failed.
 
@@ -932,6 +955,7 @@ components:
         - Running: Sandbox is running and ready to accept requests
         - Pausing: Sandbox is in the process of pausing
         - Paused: Sandbox has been paused while retaining its state
+        - Resuming: Sandbox is being restored after a pause
         - Stopping: Sandbox is being terminated
         - Terminated: Sandbox has been successfully terminated
         - Failed: Sandbox encountered a critical error
@@ -940,10 +964,11 @@ components:
         - Pending → Running (after creation completes)
         - Running → Pausing (when pause is requested)
         - Pausing → Paused (pause operation completes)
-        - Paused → Running (when resume is requested)
+        - Paused → Resuming (when resume is requested)
+        - Resuming → Running (when resume operation completes)
         - Running/Paused → Stopping (when kill is requested or TTL expires)
         - Stopping → Terminated (kill/timeout operation completes)
-        - Pending/Running/Paused → Failed (on error)
+        - Pending/Running/Paused/Resuming → Failed (on error)
 
         Note: New state values may be added in future versions.
         Clients should handle unknown state values gracefully.
@@ -1039,8 +1064,8 @@ components:
         Exactly one of `image` or `snapshotId` must be provided.
 
         When `image` is provided, `entrypoint` is required. When `snapshotId` is
-        provided, `entrypoint` must be omitted because the restored snapshot carries
-        its startup process.
+        provided, `entrypoint` is optional. If omitted, the server defaults the
+        sandbox entrypoint to `["tail", "-f", "/dev/null"]`.
 
         **Note**: API Key authentication is required via the `OPEN-SANDBOX-API-KEY` header.
       properties:
@@ -1115,8 +1140,10 @@ components:
           description: |
             The command to execute as the sandbox's entry process.
 
-            Required when `image` is provided. Must be omitted when `snapshotId`
-            is provided because the restored snapshot carries its startup process.
+            Required when `image` is provided.
+
+            Optional when `snapshotId` is provided. If omitted for snapshot
+            restore, the server defaults to `["tail", "-f", "/dev/null"]`.
 
             Explicitly specifies the user's expected main process, allowing the sandbox management
             service to reliably inject control processes before executing this command.

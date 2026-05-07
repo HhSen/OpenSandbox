@@ -38,6 +38,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -317,6 +318,32 @@ func (r *PoolReconciler) SetupWithManager(mgr ctrl.Manager, maxConcurrentReconci
 		}
 	}
 
+	filterBatchSandboxDetached := predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldObj, okOld := e.ObjectOld.(*sandboxv1alpha1.BatchSandbox)
+			newObj, okNew := e.ObjectNew.(*sandboxv1alpha1.BatchSandbox)
+			if !okOld || !okNew {
+				return false
+			}
+			return oldObj.Spec.PoolRef != "" && newObj.Spec.PoolRef == ""
+		},
+	}
+
+	enqueueOldPoolForDetachedBatchSandbox := handler.Funcs{
+		UpdateFunc: func(_ context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			oldObj, ok := e.ObjectOld.(*sandboxv1alpha1.BatchSandbox)
+			if !ok || oldObj.Spec.PoolRef == "" {
+				return
+			}
+			q.Add(reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: oldObj.Namespace,
+					Name:      oldObj.Spec.PoolRef,
+				},
+			})
+		},
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.Pool{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&corev1.Pod{}).
@@ -324,6 +351,11 @@ func (r *PoolReconciler) SetupWithManager(mgr ctrl.Manager, maxConcurrentReconci
 			&sandboxv1alpha1.BatchSandbox{},
 			handler.EnqueueRequestsFromMapFunc(findPoolForBatchSandbox),
 			builder.WithPredicates(filterBatchSandbox),
+		).
+		Watches(
+			&sandboxv1alpha1.BatchSandbox{},
+			enqueueOldPoolForDetachedBatchSandbox,
+			builder.WithPredicates(filterBatchSandboxDetached),
 		).
 		Named("pool").
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles}).

@@ -18,8 +18,10 @@ package com.alibaba.opensandbox.sandbox.infrastructure.adapters.service
 
 import com.alibaba.opensandbox.sandbox.HttpClientProvider
 import com.alibaba.opensandbox.sandbox.api.SandboxesApi
+import com.alibaba.opensandbox.sandbox.api.SnapshotsApi
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.NetworkPolicy
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PagedSandboxInfos
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PagedSnapshotInfos
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.PlatformSpec
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxCreateResponse
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxEndpoint
@@ -27,15 +29,19 @@ import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxFilter
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxImageSpec
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxInfo
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxRenewResponse
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SnapshotFilter
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SnapshotInfo
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.Volume
 import com.alibaba.opensandbox.sandbox.domain.services.Sandboxes
 import com.alibaba.opensandbox.sandbox.infrastructure.adapters.converter.SandboxModelConverter
 import com.alibaba.opensandbox.sandbox.infrastructure.adapters.converter.SandboxModelConverter.toApiRenewRequest
 import com.alibaba.opensandbox.sandbox.infrastructure.adapters.converter.SandboxModelConverter.toPagedSandboxInfos
+import com.alibaba.opensandbox.sandbox.infrastructure.adapters.converter.SandboxModelConverter.toPagedSnapshotInfos
 import com.alibaba.opensandbox.sandbox.infrastructure.adapters.converter.SandboxModelConverter.toSandboxCreateResponse
 import com.alibaba.opensandbox.sandbox.infrastructure.adapters.converter.SandboxModelConverter.toSandboxEndpoint
 import com.alibaba.opensandbox.sandbox.infrastructure.adapters.converter.SandboxModelConverter.toSandboxInfo
 import com.alibaba.opensandbox.sandbox.infrastructure.adapters.converter.SandboxModelConverter.toSandboxRenewResponse
+import com.alibaba.opensandbox.sandbox.infrastructure.adapters.converter.SandboxModelConverter.toSnapshotInfo
 import com.alibaba.opensandbox.sandbox.infrastructure.adapters.converter.toSandboxException
 import org.slf4j.LoggerFactory
 import java.time.Duration
@@ -53,61 +59,11 @@ internal class SandboxesAdapter(
     private val logger = LoggerFactory.getLogger(SandboxesAdapter::class.java)
 
     private val api = SandboxesApi(provider.config.getBaseUrl(), provider.authenticatedClient)
+    private val snapshotApi = SnapshotsApi(provider.config.getBaseUrl(), provider.authenticatedClient)
 
     override fun createSandbox(
-        spec: SandboxImageSpec,
-        entrypoint: List<String>,
-        env: Map<String, String>,
-        metadata: Map<String, String>,
-        timeout: Duration?,
-        resource: Map<String, String>,
-        networkPolicy: NetworkPolicy?,
-        extensions: Map<String, String>,
-        volumes: List<Volume>?,
-    ): SandboxCreateResponse =
-        createSandbox(
-            spec = spec,
-            entrypoint = entrypoint,
-            env = env,
-            metadata = metadata,
-            timeout = timeout,
-            resource = resource,
-            networkPolicy = networkPolicy,
-            extensions = extensions,
-            volumes = volumes,
-            platform = null,
-        )
-
-    override fun createSandbox(
-        spec: SandboxImageSpec,
-        entrypoint: List<String>,
-        env: Map<String, String>,
-        metadata: Map<String, String>,
-        timeout: Duration?,
-        resource: Map<String, String>,
-        networkPolicy: NetworkPolicy?,
-        extensions: Map<String, String>,
-        volumes: List<Volume>?,
-        platform: PlatformSpec?,
-    ): SandboxCreateResponse {
-        return createSandbox(
-            spec = spec,
-            entrypoint = entrypoint,
-            env = env,
-            metadata = metadata,
-            timeout = timeout,
-            resource = resource,
-            networkPolicy = networkPolicy,
-            extensions = extensions,
-            volumes = volumes,
-            platform = platform,
-            secureAccess = false,
-        )
-    }
-
-    override fun createSandbox(
-        spec: SandboxImageSpec,
-        entrypoint: List<String>,
+        spec: SandboxImageSpec?,
+        entrypoint: List<String>?,
         env: Map<String, String>,
         metadata: Map<String, String>,
         timeout: Duration?,
@@ -117,8 +73,9 @@ internal class SandboxesAdapter(
         volumes: List<Volume>?,
         platform: PlatformSpec?,
         secureAccess: Boolean,
+        snapshotId: String?,
     ): SandboxCreateResponse {
-        logger.info("Creating sandbox with image: {}", spec.image)
+        logger.info("Creating sandbox with startup source: {}", spec?.image ?: snapshotId)
 
         return try {
             val createRequest =
@@ -134,6 +91,7 @@ internal class SandboxesAdapter(
                     secureAccess = secureAccess,
                     extensions = extensions,
                     volumes = volumes,
+                    snapshotId = snapshotId,
                 )
             val apiResponse = api.sandboxesPost(createRequest)
             val response = apiResponse.toSandboxCreateResponse()
@@ -162,6 +120,45 @@ internal class SandboxesAdapter(
             filter.metadata?.entries?.joinToString("&") { "${it.key}=${it.value}" }
         return try {
             api.sandboxesGet(filter.states, metadataQuery, filter.page, filter.pageSize).toPagedSandboxInfos()
+        } catch (e: Exception) {
+            throw e.toSandboxException()
+        }
+    }
+
+    override fun createSnapshot(
+        sandboxId: String,
+        name: String?,
+    ): SnapshotInfo {
+        return try {
+            snapshotApi.sandboxesSandboxIdSnapshotsPost(
+                sandboxId,
+                name?.let { com.alibaba.opensandbox.sandbox.api.models.CreateSnapshotRequest(name = it) },
+            )
+                .toSnapshotInfo()
+        } catch (e: Exception) {
+            throw e.toSandboxException()
+        }
+    }
+
+    override fun getSnapshot(snapshotId: String): SnapshotInfo {
+        return try {
+            snapshotApi.snapshotsSnapshotIdGet(snapshotId).toSnapshotInfo()
+        } catch (e: Exception) {
+            throw e.toSandboxException()
+        }
+    }
+
+    override fun listSnapshots(filter: SnapshotFilter): PagedSnapshotInfos {
+        return try {
+            snapshotApi.snapshotsGet(filter.sandboxId, filter.states, filter.page, filter.pageSize).toPagedSnapshotInfos()
+        } catch (e: Exception) {
+            throw e.toSandboxException()
+        }
+    }
+
+    override fun deleteSnapshot(snapshotId: String) {
+        try {
+            snapshotApi.snapshotsSnapshotIdDelete(snapshotId)
         } catch (e: Exception) {
             throw e.toSandboxException()
         }

@@ -317,7 +317,13 @@ public class SandboxInfo
     /// Gets or sets the container image specification.
     /// </summary>
     [JsonPropertyName("image")]
-    public required ImageSpec Image { get; set; }
+    public ImageSpec? Image { get; set; }
+
+    /// <summary>
+    /// Gets or sets the snapshot identifier used to restore this sandbox.
+    /// </summary>
+    [JsonPropertyName("snapshotId")]
+    public string? SnapshotId { get; set; }
 
     /// <summary>
     /// Gets or sets the entrypoint command.
@@ -365,13 +371,19 @@ public class CreateSandboxRequest
     /// Gets or sets the container image specification.
     /// </summary>
     [JsonPropertyName("image")]
-    public required ImageSpec Image { get; set; }
+    public ImageSpec? Image { get; set; }
+
+    /// <summary>
+    /// Gets or sets the snapshot identifier to restore from.
+    /// </summary>
+    [JsonPropertyName("snapshotId")]
+    public string? SnapshotId { get; set; }
 
     /// <summary>
     /// Gets or sets the entrypoint command.
     /// </summary>
     [JsonPropertyName("entrypoint")]
-    public required IReadOnlyList<string> Entrypoint { get; set; }
+    public IReadOnlyList<string>? Entrypoint { get; set; }
 
     /// <summary>
     /// Gets or sets the timeout in seconds.
@@ -477,6 +489,54 @@ public class CreateSandboxResponse
 }
 
 /// <summary>
+/// Status of a snapshot.
+/// </summary>
+public class SnapshotStatus
+{
+    [JsonPropertyName("state")]
+    public required string State { get; set; }
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    [JsonPropertyName("lastTransitionAt")]
+    public DateTime? LastTransitionAt { get; set; }
+}
+
+/// <summary>
+/// Information about a snapshot.
+/// </summary>
+public class SnapshotInfo
+{
+    [JsonPropertyName("id")]
+    public required string Id { get; set; }
+
+    [JsonPropertyName("sandboxId")]
+    public required string SandboxId { get; set; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("status")]
+    public required SnapshotStatus Status { get; set; }
+
+    [JsonPropertyName("createdAt")]
+    public required DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Request to create a snapshot.
+/// </summary>
+public class CreateSnapshotRequest
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+}
+
+/// <summary>
 /// Pagination information for list responses.
 /// </summary>
 public class PaginationInfo
@@ -553,6 +613,29 @@ public class ListSandboxesParams
     /// <summary>
     /// Gets or sets the page size.
     /// </summary>
+    public int? PageSize { get; set; }
+}
+
+/// <summary>
+/// Response from listing snapshots.
+/// </summary>
+public class ListSnapshotsResponse
+{
+    [JsonPropertyName("items")]
+    public required IReadOnlyList<SnapshotInfo> Items { get; set; }
+
+    [JsonPropertyName("pagination")]
+    public PaginationInfo? Pagination { get; set; }
+}
+
+/// <summary>
+/// Parameters for listing snapshots.
+/// </summary>
+public class ListSnapshotsParams
+{
+    public string? SandboxId { get; set; }
+    public IReadOnlyList<string>? States { get; set; }
+    public int? Page { get; set; }
     public int? PageSize { get; set; }
 }
 

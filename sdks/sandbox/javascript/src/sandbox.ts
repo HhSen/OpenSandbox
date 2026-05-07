@@ -59,9 +59,14 @@ export interface SandboxCreateOptions {
   /**
    * Container image uri, e.g. `python:3.11`
    */
-  image:
+  image?:
     | string
     | { uri: string; auth?: { username: string; password: string } };
+  /**
+   * Snapshot identifier to restore from.
+   * Mutually exclusive with `image`.
+   */
+  snapshotId?: string;
 
   /**
    * Entrypoint command for the sandbox (defaults to tail -f /dev/null).
@@ -164,8 +169,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 function toImageSpec(
-  image: SandboxCreateOptions["image"]
-): CreateSandboxRequest["image"] {
+  image: NonNullable<SandboxCreateOptions["image"]>
+): NonNullable<CreateSandboxRequest["image"]> {
   if (typeof image === "string") return { uri: image };
   return { uri: image.uri, auth: image.auth };
 }
@@ -235,6 +240,10 @@ export class Sandbox {
   }
 
   static async create(opts: SandboxCreateOptions): Promise<Sandbox> {
+    if ((opts.image == null) === (opts.snapshotId == null)) {
+      throw new Error("Exactly one of image or snapshotId must be provided");
+    }
+
     // Validate volumes before allocating transport resources.
     if (opts.volumes) {
       for (const vol of opts.volumes) {
@@ -288,7 +297,8 @@ export class Sandbox {
     }
 
     const req: CreateSandboxRequest = {
-      image: toImageSpec(opts.image),
+      image: opts.image == null ? undefined : toImageSpec(opts.image),
+      snapshotId: opts.snapshotId,
       entrypoint: opts.entrypoint ?? DEFAULT_ENTRYPOINT,
       resourceLimits: opts.resource ?? DEFAULT_RESOURCE_LIMITS,
       secureAccess: opts.secureAccess ?? false,

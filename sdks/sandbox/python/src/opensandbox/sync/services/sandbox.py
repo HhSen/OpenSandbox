@@ -24,8 +24,10 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 from opensandbox.models.sandboxes import (
+    CreateSnapshotRequest,
     NetworkPolicy,
     PagedSandboxInfos,
+    PagedSnapshotInfos,
     PlatformSpec,
     SandboxCreateResponse,
     SandboxEndpoint,
@@ -33,6 +35,8 @@ from opensandbox.models.sandboxes import (
     SandboxImageSpec,
     SandboxInfo,
     SandboxRenewResponse,
+    SnapshotFilter,
+    SnapshotInfo,
     Volume,
 )
 
@@ -47,8 +51,8 @@ class SandboxesSync(Protocol):
 
     def create_sandbox(
         self,
-        spec: SandboxImageSpec,
-        entrypoint: list[str],
+        spec: SandboxImageSpec | None,
+        entrypoint: list[str] | None,
         env: dict[str, str],
         metadata: dict[str, str],
         timeout: timedelta | None,
@@ -58,6 +62,7 @@ class SandboxesSync(Protocol):
         volumes: list[Volume] | None,
         platform: PlatformSpec | None = None,
         secure_access: bool = False,
+        snapshot_id: str | None = None,
     ) -> SandboxCreateResponse:
         """
         Create a new sandbox with the specified configuration (blocking).
@@ -205,4 +210,22 @@ class SandboxesSync(Protocol):
         Raises:
             SandboxException: If the operation fails.
         """
+        ...
+
+    def create_snapshot(
+        self, sandbox_id: str, request: CreateSnapshotRequest | None = None
+    ) -> SnapshotInfo:
+        """Create a persistent snapshot from a sandbox (blocking)."""
+        ...
+
+    def get_snapshot(self, snapshot_id: str) -> SnapshotInfo:
+        """Retrieve information about an existing snapshot (blocking)."""
+        ...
+
+    def list_snapshots(self, filter: SnapshotFilter) -> PagedSnapshotInfos:
+        """List snapshots with optional filtering (blocking)."""
+        ...
+
+    def delete_snapshot(self, snapshot_id: str) -> None:
+        """Delete a snapshot (blocking)."""
         ...

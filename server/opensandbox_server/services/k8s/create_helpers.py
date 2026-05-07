@@ -25,6 +25,7 @@ from opensandbox_server.services.constants import (
     SANDBOX_SECURE_ACCESS_TOKEN_METADATA_KEY,
     SANDBOX_ID_LABEL,
     SANDBOX_MANUAL_CLEANUP_LABEL,
+    SANDBOX_SNAPSHOT_ID_LABEL,
 )
 from opensandbox_server.services.validators import calculate_expiration_or_raise
 
@@ -56,6 +57,8 @@ def _build_create_workload_context(
     labels: Dict[str, str] = {SANDBOX_ID_LABEL: sandbox_id}
     if expires_at is None:
         labels[SANDBOX_MANUAL_CLEANUP_LABEL] = "true"
+    if request.snapshot_id:
+        labels[SANDBOX_SNAPSHOT_ID_LABEL] = request.snapshot_id
     if request.metadata:
         labels.update(request.metadata)
 

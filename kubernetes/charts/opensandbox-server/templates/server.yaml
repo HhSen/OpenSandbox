@@ -38,6 +38,9 @@ rules:
   - apiGroups: ["sandbox.opensandbox.io"]
     resources: ["pools", "pools/status", "pools/finalizers"]
     verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["sandbox.opensandbox.io"]
+    resources: ["sandboxsnapshots", "sandboxsnapshots/status", "sandboxsnapshots/finalizers"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
 ---
 apiVersion: {{ include "opensandbox-server.rbac.apiVersion" . }}
 kind: ClusterRoleBinding
@@ -103,6 +106,9 @@ spec:
           env:
             - name: SANDBOX_CONFIG_PATH
               value: "/etc/opensandbox/config.toml"
+            {{- with .Values.server.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/opensandbox/config.toml
