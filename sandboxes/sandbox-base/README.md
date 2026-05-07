@@ -17,25 +17,37 @@ The `sandbox-base` image is the default runtime for OpenSandbox Claude Code sand
 
 ### Workspace Persistence (OrangeFS)
 
-These three variables enable per-session workspace persistence via OrangeFS. All three must be set together for the mount to proceed; any one missing skips the mount gracefully.
+These variables enable two-tier persistence via OrangeFS. `USERNAME` alone enables global config persistence; both `USERNAME` and `SESSION_ID` are required for session workspace persistence.
 
 | Variable | Description |
 |---|---|
-| `USERNAME` | User identifier. Determines the subpath in OrangeFS: `{USERNAME}/{SESSION_ID}`. |
-| `SESSION_ID` | Session identifier. Combined with `USERNAME` to form a unique workspace path. |
+| `USERNAME` | User identifier. Must match `^[a-zA-Z0-9_-]+$`. Determines the user-level subpath in OrangeFS. |
+| `SESSION_ID` | Session identifier. Must match `^[a-zA-Z0-9_-]+$`. Pass a new UUID for a fresh session; reuse the same value to resume. |
 | `ORANGEFS_RS_ADDR` | OrangeFS registry server address. |
 | `ORANGEFS_TOKEN` | OrangeFS authentication token. |
 | `ORANGEFS_VOLUME` | OrangeFS volume name. |
 
-When the mount succeeds, the workspace is available at `/workspace/{USERNAME}/{SESSION_ID}`. Claude Code's project conversation history (`/root/.claude/projects/`) is automatically redirected into this path under `.claude-projects/`, so resuming a sandbox with the same `SESSION_ID` restores prior conversation context.
+## Persistence Architecture
 
-### Claude Code Config Persistence (User Profile)
+```
+OrangeFS volume/
+  {USERNAME}/
+    .claude/                        ← global user config (shared across all sessions)
+      settings.json                 ← Claude Code settings
+      CLAUDE.md                     ← global instructions
+      history.jsonl                 ← command history
+      hooks/                        ← hook scripts
+      projects/                     ← conversation histories (all sessions)
+    {SESSION_ID}/
+      workspace/                    ← session working files and artifacts
+        .claude/                    ← project-level Claude Code config (CLAUDE.md, local settings)
+        <your files>
 
-| Variable | Description |
-|---|---|
-| `CLAUDE_PROFILE_PATH` | Path inside the container where a user-profile volume is mounted. The entrypoint symlinks `/root/.claude.json`, `settings.json`, and `CLAUDE.md` from this directory so user-level config (auth, preferences, global instructions) survives container replacement. |
-
-The profile volume itself is a standard PVC or Docker named volume mounted by the caller at sandbox creation time.
+Container mounts:
+  /root/.claude/   ← OrangeFS: {USERNAME}/.claude/      (global, shared)
+  /workspace/      ← OrangeFS: {USERNAME}/{SESSION_ID}/workspace/  (session-specific)
+  /root/.claude.json  ← bootstrapped from ANTHROPIC_API_KEY (not persisted)
+```
 
 ## Fallback Behaviour
 
@@ -43,15 +55,15 @@ All persistence variables are optional. The table below shows what is lost and w
 
 | What is omitted | Effect |
 |---|---|
-| None omitted (full config) | Full persistence: auth, preferences, workspace files, and conversation history all survive container destruction. |
-| `CLAUDE_PROFILE_PATH` not set | Claude Code config is ephemeral. Auth and preferences reset on every new container. OrangeFS workspace (files) is unaffected. |
-| OrangeFS vars (`USERNAME` / `SESSION_ID` / etc.) not set | Workspace uses `/workspace` directly inside the container. Files and conversation history are lost when the container is destroyed. User profile (auth, settings) is unaffected if `CLAUDE_PROFILE_PATH` is set. |
-| `ANTHROPIC_API_KEY` not set and no profile | Claude Code runs but prompts for interactive login on first use. |
+| None omitted (full config) | Full persistence: Claude Code config, workspace files, and conversation history all survive container destruction. |
+| `SESSION_ID` not set | Global Claude Code config (`/root/.claude`) persists via OrangeFS; `/workspace` is ephemeral inside the container. |
+| `USERNAME` not set (or OrangeFS binary absent) | Both mounts skipped. All state is ephemeral. |
+| `ANTHROPIC_API_KEY` not set and no persisted config | Claude Code runs but prompts for interactive login on first use. |
 | All omitted | Fully ephemeral: works for one-off tasks, nothing persists. |
 
 ## Creating a Sandbox with Full Persistence
 
-The following example shows a complete `CreateSandboxRequest` body using the OpenSandbox lifecycle API. Replace placeholders with your actual values.
+The following example shows a complete `CreateSandboxRequest` body using the OpenSandbox lifecycle API.
 
 ```json
 {
@@ -61,26 +73,12 @@ The following example shows a complete `CreateSandboxRequest` body using the Ope
   "timeout": 3600,
   "env": {
     "ANTHROPIC_API_KEY": "<your-anthropic-api-key>",
-
     "USERNAME": "<user-id>",
     "SESSION_ID": "<session-id>",
     "ORANGEFS_RS_ADDR": "<orangefs-registry-addr>",
     "ORANGEFS_TOKEN": "<orangefs-token>",
-    "ORANGEFS_VOLUME": "<orangefs-volume>",
-
-    "CLAUDE_PROFILE_PATH": "/root/.claude-profile"
+    "ORANGEFS_VOLUME": "<orangefs-volume>"
   },
-  "volumes": [
-    {
-      "name": "claude-user-profile",
-      "mountPath": "/root/.claude-profile",
-      "pvc": {
-        "claimName": "claude-config-<user-id>",
-        "createIfNotExists": true,
-        "storage": "1Gi"
-      }
-    }
-  ],
   "entrypoint": ["/entrypoint.sh"]
 }
 ```
@@ -95,33 +93,21 @@ sandbox = await Sandbox.create(
     connection_config=config,
     env={
         "ANTHROPIC_API_KEY": anthropic_api_key,
-        # Session workspace via OrangeFS
         "USERNAME": user_id,
         "SESSION_ID": session_id,
         "ORANGEFS_RS_ADDR": orangefs_addr,
         "ORANGEFS_TOKEN": orangefs_token,
         "ORANGEFS_VOLUME": orangefs_volume,
-        # User profile persistence
-        "CLAUDE_PROFILE_PATH": "/root/.claude-profile",
     },
-    volumes=[
-        {
-            "name": "claude-user-profile",
-            "mountPath": "/root/.claude-profile",
-            "pvc": {
-                "claimName": f"claude-config-{user_id}",
-                "createIfNotExists": True,
-                "storage": "1Gi",
-            },
-        }
-    ],
     entrypoint=["/entrypoint.sh"],
 )
 ```
 
+To resume a previous session, create a new sandbox with the **same `SESSION_ID`**. Claude Code will see the prior workspace files and its full conversation history.
+
 ### Minimal (no persistence)
 
-If you only need a one-shot sandbox with no state carried over between runs, no volumes or OrangeFS config is required:
+If you only need a one-shot sandbox with no state carried over between runs, no OrangeFS config is required:
 
 ```json
 {
@@ -135,27 +121,6 @@ If you only need a one-shot sandbox with no state carried over between runs, no 
 ```
 
 Claude Code will authenticate from `ANTHROPIC_API_KEY` on first run. All state is discarded when the container exits.
-
-## Persistence Architecture
-
-```
-/root/.claude-profile/          ← user-profile volume (PVC, per-user)
-  .claude.json                  ← auth tokens, model, global settings
-  .claude/
-    settings.json               ← user preferences
-    CLAUDE.md                   ← global instructions
-
-/root/                          ← container-local (ephemeral)
-  .claude.json    → symlink → /root/.claude-profile/.claude.json
-  .claude/
-    settings.json → symlink → /root/.claude-profile/.claude/settings.json
-    CLAUDE.md     → symlink → /root/.claude-profile/.claude/CLAUDE.md
-    projects/     → symlink → /workspace/<USERNAME>/<SESSION_ID>/.claude-projects/
-
-/workspace/<USERNAME>/<SESSION_ID>/   ← OrangeFS (per-session)
-  <your files>
-  .claude-projects/                   ← Claude Code conversation history
-```
 
 ## Port
 
