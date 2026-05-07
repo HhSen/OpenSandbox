@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { Sandbox } from '@/api/types.ts'
-import { buildPtyWebSocketUrl, createPtySession, deletePtySession } from '@/api/terminal.ts'
+import { buildPtyWebSocketUrl, createPtySession } from '@/api/terminal.ts'
 
 interface Props {
   sandbox: Sandbox
@@ -24,10 +24,14 @@ interface ServerFrame {
   code?: string
 }
 
+// Persists across StrictMode double-invocations so both effects share one in-flight request.
+// Keyed by sandboxId so switching to a different sandbox always creates a fresh session.
+type SessionInit = { sandboxId: string; promise: Promise<string> }
+
 export function TerminalPanel({ sandbox, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
-  const sessionIdRef = useRef<string | null>(null)
+  const sessionInitRef = useRef<SessionInit | null>(null)
   const [status, setStatus] = useState<Status>('connecting')
   const [statusMsg, setStatusMsg] = useState('')
 
@@ -93,11 +97,18 @@ export function TerminalPanel({ sandbox, onClose }: Props) {
 
     async function connect() {
       try {
-        const session = await createPtySession(sandbox.id)
+        // Share the in-flight request across StrictMode double-invocation.
+        // Both effects await the same Promise, so only one HTTP POST is made.
+        if (!sessionInitRef.current || sessionInitRef.current.sandboxId !== sandbox.id) {
+          sessionInitRef.current = {
+            sandboxId: sandbox.id,
+            promise: createPtySession(sandbox.id).then((s) => s.session_id),
+          }
+        }
+        const sessionId = await sessionInitRef.current.promise
         if (destroyed) return
-        sessionIdRef.current = session.session_id
 
-        const wsUrl = buildPtyWebSocketUrl(sandbox.id, session.session_id)
+        const wsUrl = buildPtyWebSocketUrl(sandbox.id, sessionId)
         const ws = new WebSocket(wsUrl)
         wsRef.current = ws
         ws.binaryType = 'arraybuffer'
@@ -134,6 +145,7 @@ export function TerminalPanel({ sandbox, onClose }: Props) {
               }
             } catch {
               // ignore malformed JSON frames
+              if (import.meta.env.DEV) console.warn('[TerminalPanel] unexpected server frame', event.data)
             }
           }
         }
@@ -151,6 +163,7 @@ export function TerminalPanel({ sandbox, onClose }: Props) {
           }
         }
       } catch (err) {
+        sessionInitRef.current = null  // allow retry on next open
         if (!destroyed) {
           setStatus('error')
           setStatusMsg(err instanceof Error ? err.message : 'Failed to start terminal')
@@ -172,10 +185,10 @@ export function TerminalPanel({ sandbox, onClose }: Props) {
       wsRef.current?.close()
       wsRef.current = null
       terminal.dispose()
-      if (sessionIdRef.current) {
-        void deletePtySession(sandbox.id, sessionIdRef.current).catch(() => {})
-        sessionIdRef.current = null
-      }
+      // sessionInitRef is intentionally preserved across StrictMode remounts so the
+      // second invocation reconnects to the same PTY session rather than creating a new
+      // one. PTY sessions end when the WebSocket closes (bash exits) and are GC'd when
+      // the sandbox is destroyed — no explicit DELETE is needed here.
     }
   }, [sandbox.id])
 

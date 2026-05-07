@@ -21,6 +21,8 @@ export async function deletePtySession(sandboxId: string, sessionId: string): Pr
 
 export function buildPtyWebSocketUrl(sandboxId: string, sessionId: string): string {
   const settings = loadSettings()
-  const wsBase = settings.serverUrl.replace(/^https?/, (m) => (m === 'https' ? 'wss' : 'ws')).replace(/\/$/, '')
-  return `${wsBase}/sandboxes/${sandboxId}/proxy/${EXECD_PORT}/pty/${sessionId}/ws`
+  const url = new URL(settings.serverUrl)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.pathname = url.pathname.replace(/\/$/, '') + `/sandboxes/${sandboxId}/proxy/${EXECD_PORT}/pty/${sessionId}/ws`
+  return url.toString()
 }
