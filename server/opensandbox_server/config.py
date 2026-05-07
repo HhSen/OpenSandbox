@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
 CONFIG_ENV_VAR = "SANDBOX_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path.home() / ".sandbox.toml"
 
+API_KEY_ENV_VAR = "OPENSANDBOX_SERVER_API_KEY"
+
 _HOSTNAME_RE = re.compile(r"^(?=.{1,253}$)(?!-)[A-Za-z0-9-]{1,63}(?:\.(?!-)[A-Za-z0-9-]{1,63})*$")
 _WILDCARD_DOMAIN_RE = re.compile(r"^\*\.(?!-)[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63})+$")
 _IPV4_WITH_PORT_RE = re.compile(r"^(?P<ip>(?:\d{1,3}\.){3}\d{1,3})(?::(?P<port>\d{1,5}))?$")
@@ -554,11 +556,27 @@ class KubernetesRuntimeConfig(BaseModel):
         gt=0,
         description="Polling interval in seconds when waiting for a sandbox to become ready after creation.",
     )
+    snapshot_create_timeout_seconds: int = Field(
+        default=15 * 60,
+        ge=1,
+        description=(
+            "Timeout in seconds to wait for a Kubernetes public snapshot to become ready. "
+            "Set this greater than the controller snapshot commit-job-timeout."
+        ),
+    )
     execd_init_resources: Optional["ExecdInitResources"] = Field(
         default=None,
         description=(
             "Resource requests/limits for the execd init container. "
             "If unset, no resource constraints are applied."
+        ),
+    )
+    image_pull_policy: Optional[str] = Field(
+        default="IfNotPresent",
+        description=(
+            "Image pull policy for sandbox containers. "
+            "Values: Always, IfNotPresent, Never. "
+            "Can be overridden per-sandbox via image.pull_policy in create request."
         ),
     )
 
@@ -785,6 +803,20 @@ class DockerConfig(BaseModel):
     )
 
 
+class StoreConfig(BaseModel):
+    """Persistence backend for server-managed server resources."""
+
+    type: Literal["sqlite"] = Field(
+        default="sqlite",
+        description="Server persistence backend type. SQLite is the default local persistent backend.",
+    )
+    path: str = Field(
+        default=str(Path.home() / ".opensandbox" / "opensandbox.db"),
+        description="Filesystem path to the SQLite database used for server metadata persistence.",
+        min_length=1,
+    )
+
+
 class AppConfig(BaseModel):
     """Root application configuration model."""
 
@@ -803,12 +835,15 @@ class AppConfig(BaseModel):
     ingress: Optional[IngressConfig] = None
     docker: DockerConfig = Field(default_factory=DockerConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
+    store: StoreConfig = Field(
+        default_factory=StoreConfig,
+        description="Persistence backend configuration for server-managed resources.",
+    )
     egress: Optional[EgressConfig] = None
     secure_runtime: Optional[SecureRuntimeConfig] = Field(
         default=None,
         description="Secure container runtime configuration (gVisor, Kata, Firecracker).",
     )
-
     @model_validator(mode="after")
     def validate_runtime_blocks(self) -> "AppConfig":
         if self.runtime.type == "docker":
@@ -870,6 +905,12 @@ def _load_toml_data(path: Path) -> dict[str, Any]:
         raise
 
 
+def _apply_env_overrides(config: AppConfig) -> None:
+    """Apply environment variable overrides to parsed configuration."""
+    if API_KEY_ENV_VAR in os.environ:
+        config.server.api_key = os.environ[API_KEY_ENV_VAR]
+
+
 def load_config(path: str | Path | None = None) -> AppConfig:
     """
     Load configuration from TOML file and store it globally.
@@ -896,6 +937,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         logger.error("Invalid configuration in %s: %s", resolved_path, exc)
         raise
 
+    _apply_env_overrides(_config)
     _config_path = resolved_path
     return _config
 
@@ -937,6 +979,7 @@ __all__ = [
     "INGRESS_MODE_GATEWAY",
     "DockerConfig",
     "StorageConfig",
+    "StoreConfig",
     "KubernetesRuntimeConfig",
     "EgressConfig",
     "EGRESS_MODE_DNS",

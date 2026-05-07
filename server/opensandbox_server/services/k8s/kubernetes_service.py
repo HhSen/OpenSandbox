@@ -85,6 +85,7 @@ from opensandbox_server.services.validators import (
 )
 from opensandbox_server.services.k8s.client import K8sClient
 from opensandbox_server.services.k8s.provider_factory import create_workload_provider
+from opensandbox_server.services.snapshot_restore import resolve_sandbox_image_from_request
 
 logger = logging.getLogger(__name__)
 
@@ -114,12 +115,12 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
         
         if not self.app_config.kubernetes:
             raise ValueError("Kubernetes configuration is required")
-        
+
         self.ingress_config = self.app_config.ingress
 
         self.namespace = self.app_config.kubernetes.namespace
         self.execd_image = runtime_config.execd_image
-        
+
         try:
             self.k8s_client = K8sClient(self.app_config.kubernetes)
             logger.info("Kubernetes client initialized successfully")
@@ -132,7 +133,7 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
                     "message": f"Failed to initialize Kubernetes client: {str(e)}",
                 },
             ) from e
-        
+
         provider_type = self.app_config.kubernetes.workload_provider
         try:
             self.workload_provider = create_workload_provider(
@@ -152,7 +153,7 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
                     "message": f"Invalid workload provider configuration: {str(e)}",
                 },
             ) from e
-        
+
         logger.info(
             "KubernetesSandboxService initialized: namespace=%s, execd_image=%s",
             self.namespace,
@@ -196,7 +197,7 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
                 
                 if not workload:
                     logger.debug(f"Workload not found yet for sandbox {sandbox_id}")
-                    time.sleep(poll_interval_seconds)
+                    await asyncio.sleep(poll_interval_seconds)
                     continue
                 
                 status_info = _normalize_create_status(
@@ -204,14 +205,14 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
                 )
                 current_state = status_info["state"]
                 current_message = status_info["message"]
-                
+
                 if current_state != last_state or current_message != last_message:
                     logger.info(
                         f"Sandbox {sandbox_id} state: {current_state} - {current_message}"
                     )
                     last_state = current_state
                     last_message = current_message
-                
+
                 if current_state in ("Running", "Allocated"):
                     return workload
                 if _is_unschedulable_status(status_info):
@@ -225,7 +226,7 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
                             ),
                         },
                     )
-                
+
             except HTTPException:
                 raise
             except Exception as e:
@@ -233,9 +234,9 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
                     f"Error checking sandbox {sandbox_id} status: {e}",
                     exc_info=True
                 )
-            
+
             await asyncio.sleep(poll_interval_seconds)
-        
+
         elapsed = time.time() - start_time
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
@@ -402,7 +403,8 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
         Raises:
             HTTPException: If creation fails, timeout, or invalid parameters
         """
-        ensure_entrypoint(request.entrypoint)
+        request = resolve_sandbox_image_from_request(request)
+        ensure_entrypoint(request.entrypoint or [])
         ensure_metadata_labels(request.metadata)
         ensure_platform_valid(request.platform)
         ensure_timeout_within_limit(
@@ -412,9 +414,9 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
         self._ensure_secure_access_support(request)
         self._ensure_network_policy_support(request)
         self._ensure_image_auth_support(request)
-        
+
         sandbox_id = self.generate_sandbox_id()
-        
+
         created_at = datetime.now(timezone.utc)
         context = _build_create_workload_context(
             app_config=self.app_config,
@@ -465,7 +467,7 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
                 sandbox_id,
                 workload_info.get("name"),
             )
-            
+
             try:
                 workload = await self._wait_for_sandbox_ready(
                     sandbox_id=sandbox_id,
@@ -477,7 +479,7 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
                     self.workload_provider.get_status(workload)
                 )
                 effective_platform = _extract_platform_from_workload(workload)
-                
+
                 return CreateSandboxResponse(
                     id=sandbox_id,
                     status=SandboxStatus(
@@ -525,13 +527,13 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
     def get_sandbox(self, sandbox_id: str) -> Sandbox:
         """
         Get sandbox by ID.
-        
+
         Args:
             sandbox_id: Unique sandbox identifier
-            
+
         Returns:
             Sandbox: Sandbox information
-            
+
         Raises:
             HTTPException: If sandbox not found
         """
@@ -585,10 +587,10 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
     def delete_sandbox(self, sandbox_id: str) -> None:
         """
         Delete a sandbox.
-        
+
         Args:
             sandbox_id: Unique sandbox identifier
-            
+
         Raises:
             HTTPException: If deletion fails
         """
@@ -608,39 +610,85 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
     
     def pause_sandbox(self, sandbox_id: str) -> None:
         """
-        Pause sandbox (not supported in Kubernetes).
-        
-        Args:
-            sandbox_id: Unique sandbox identifier
-            
-        Raises:
-            HTTPException: Always raises 501 Not Implemented
+        Pause sandbox by delegating to the workload provider.
         """
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail={
-                "code": SandboxErrorCodes.API_NOT_SUPPORTED,
-                "message": "Pause operation is not supported in Kubernetes runtime",
-            },
-        )
-    
+        try:
+            self.workload_provider.pause_sandbox(sandbox_id, self.namespace)
+        except NotImplementedError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": SandboxErrorCodes.INVALID_STATE,
+                    "message": "Pause is not supported for this sandbox type",
+                },
+            )
+        except ValueError as e:
+            msg = str(e)
+            if "not found" in msg:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "code": SandboxErrorCodes.K8S_SANDBOX_NOT_FOUND,
+                        "message": msg,
+                    },
+                )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": SandboxErrorCodes.INVALID_STATE,
+                    "message": msg,
+                },
+            )
+        except Exception as e:
+            logger.error("Failed to pause sandbox %s: %s", sandbox_id, e)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "code": SandboxErrorCodes.K8S_API_ERROR,
+                    "message": f"Failed to pause sandbox: {e}",
+                },
+            )
+
     def resume_sandbox(self, sandbox_id: str) -> None:
         """
-        Resume sandbox (not supported in Kubernetes).
-        
-        Args:
-            sandbox_id: Unique sandbox identifier
-            
-        Raises:
-            HTTPException: Always raises 501 Not Implemented
+        Resume sandbox by delegating to the workload provider.
         """
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail={
-                "code": SandboxErrorCodes.API_NOT_SUPPORTED,
-                "message": "Resume operation is not supported in Kubernetes runtime",
-            },
-        )
+        try:
+            self.workload_provider.resume_sandbox(sandbox_id, self.namespace)
+        except NotImplementedError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": SandboxErrorCodes.INVALID_STATE,
+                    "message": "Resume is not supported for this sandbox type",
+                },
+            )
+        except ValueError as e:
+            msg = str(e)
+            if "not found" in msg:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "code": SandboxErrorCodes.K8S_SANDBOX_NOT_FOUND,
+                        "message": msg,
+                    },
+                )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": SandboxErrorCodes.INVALID_STATE,
+                    "message": msg,
+                },
+            )
+        except Exception as e:
+            logger.error("Failed to resume sandbox %s: %s", sandbox_id, e)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "code": SandboxErrorCodes.K8S_API_ERROR,
+                    "message": f"Failed to resume sandbox: {e}",
+                },
+            )
 
     def get_access_renew_extend_seconds(self, sandbox_id: str) -> Optional[int]:
         workload = self.workload_provider.get_workload(

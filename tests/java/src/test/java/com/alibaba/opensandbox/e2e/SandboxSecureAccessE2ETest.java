@@ -60,7 +60,7 @@ public class SandboxSecureAccessE2ETest extends BaseE2ETest {
                         .readyTimeout(Duration.ofSeconds(60))
                         .secureAccess()
                         .env("EXECD_API_GRACE_SHUTDOWN", "3s")
-                        .env("EXECD_JUPYTER_IDLE_POLL_INTERVAL", "1s")
+                        .env("EXECD_JUPYTER_IDLE_POLL_INTERVAL", "200ms")
                         .metadata(Map.of("tag", "secure-access-java-e2e-test"))
                         .build();
 
@@ -99,14 +99,23 @@ public class SandboxSecureAccessE2ETest extends BaseE2ETest {
             URI pingUri = endpointUri(execdEndpoint, "/ping");
 
             HttpResponse<String> missingToken = sendPing(client, pingUri, execdHeaders, null);
-            assertEquals(401, missingToken.statusCode(), "secured endpoint must reject missing access token");
+            assertEquals(
+                    401,
+                    missingToken.statusCode(),
+                    "secured endpoint must reject missing access token");
 
             HttpResponse<String> wrongToken =
                     sendPing(client, pingUri, execdHeaders, "definitely-wrong-token");
-            assertEquals(401, wrongToken.statusCode(), "secured endpoint must reject wrong access token");
+            assertEquals(
+                    401,
+                    wrongToken.statusCode(),
+                    "secured endpoint must reject wrong access token");
 
             HttpResponse<String> correctToken = sendPing(client, pingUri, execdHeaders, token);
-            assertEquals(200, correctToken.statusCode(), "secured endpoint must accept the endpoint token");
+            assertEquals(
+                    200,
+                    correctToken.statusCode(),
+                    "secured endpoint must accept the endpoint token");
         } finally {
             killAndClose(sandbox);
         }
@@ -128,7 +137,7 @@ public class SandboxSecureAccessE2ETest extends BaseE2ETest {
                         .timeout(Duration.ofMinutes(2))
                         .readyTimeout(Duration.ofSeconds(60))
                         .env("EXECD_API_GRACE_SHUTDOWN", "3s")
-                        .env("EXECD_JUPYTER_IDLE_POLL_INTERVAL", "1s")
+                        .env("EXECD_JUPYTER_IDLE_POLL_INTERVAL", "200ms")
                         .metadata(Map.of("tag", "non-secure-access-java-e2e-test"))
                         .build();
 
@@ -142,8 +151,13 @@ public class SandboxSecureAccessE2ETest extends BaseE2ETest {
             HttpClient client =
                     HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
             HttpResponse<String> ping =
-                    sendPing(client, endpointUri(execdEndpoint, "/ping"), execdEndpoint.getHeaders(), null);
-            assertEquals(200, ping.statusCode(), "default endpoint should allow requests without token");
+                    sendPing(
+                            client,
+                            endpointUri(execdEndpoint, "/ping"),
+                            execdEndpoint.getHeaders(),
+                            null);
+            assertEquals(
+                    200, ping.statusCode(), "default endpoint should allow requests without token");
         } finally {
             killAndClose(sandbox);
         }
@@ -162,7 +176,8 @@ public class SandboxSecureAccessE2ETest extends BaseE2ETest {
     private static HttpResponse<String> sendPing(
             HttpClient client, URI uri, Map<String, String> endpointHeaders, String token)
             throws IOException, InterruptedException {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).GET();
+        HttpRequest.Builder builder =
+                HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).GET();
         for (Map.Entry<String, String> header : endpointHeaders.entrySet()) {
             if (!SECURE_ACCESS_HEADER.equalsIgnoreCase(header.getKey())) {
                 builder.header(header.getKey(), header.getValue());

@@ -128,11 +128,22 @@ public sealed class Sandbox : IAsyncDisposable
         var logger = loggerFactory.CreateLogger("OpenSandbox.Sandbox");
         var lifecycleBaseUrl = connectionConfig.GetBaseUrl();
         var adapterFactory = options.AdapterFactory ?? DefaultAdapterFactory.Create();
+        if (string.IsNullOrWhiteSpace(options.Image) == string.IsNullOrWhiteSpace(options.SnapshotId))
+        {
+            throw new InvalidArgumentException("Exactly one of Image or SnapshotId must be specified.");
+        }
+        if (!string.IsNullOrWhiteSpace(options.SnapshotId) && options.Entrypoint is not null)
+        {
+            throw new InvalidArgumentException("Entrypoint must be omitted when SnapshotId is provided.");
+        }
         ValidateHostPaths(options.Volumes);
         var httpClientProvider = new HttpClientProvider(connectionConfig, loggerFactory);
 
         ISandboxes sandboxes;
-        logger.LogInformation("Creating sandbox (image={Image}, useServerProxy={UseServerProxy})", options.Image, connectionConfig.UseServerProxy);
+        logger.LogInformation(
+            "Creating sandbox (startupSource={StartupSource}, useServerProxy={UseServerProxy})",
+            options.Image ?? options.SnapshotId,
+            connectionConfig.UseServerProxy);
         try
         {
             var lifecycleStack = adapterFactory.CreateLifecycleStack(new CreateLifecycleStackOptions
@@ -153,12 +164,17 @@ public sealed class Sandbox : IAsyncDisposable
 
         var request = new CreateSandboxRequest
         {
-            Image = new ImageSpec
-            {
-                Uri = options.Image,
-                Auth = options.ImageAuth
-            },
-            Entrypoint = options.Entrypoint ?? Constants.DefaultEntrypoint,
+            Image = string.IsNullOrWhiteSpace(options.Image)
+                ? null
+                : new ImageSpec
+                {
+                    Uri = options.Image!,
+                    Auth = options.ImageAuth
+                },
+            SnapshotId = options.SnapshotId,
+            Entrypoint = string.IsNullOrWhiteSpace(options.SnapshotId)
+                ? options.Entrypoint ?? Constants.DefaultEntrypoint
+                : null,
             Timeout = options.ManualCleanup ? null : options.TimeoutSeconds ?? Constants.DefaultTimeoutSeconds,
             ResourceLimits = options.Resource ?? Constants.DefaultResourceLimits,
             Env = options.Env,
@@ -522,6 +538,19 @@ public sealed class Sandbox : IAsyncDisposable
         {
             ExpiresAt = expiresAt
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates a persistent snapshot from this sandbox.
+    /// </summary>
+    public Task<SnapshotInfo> CreateSnapshotAsync(
+        string? name = null,
+        CancellationToken cancellationToken = default)
+    {
+        return _sandboxes.CreateSnapshotAsync(
+            Id,
+            new CreateSnapshotRequest { Name = name },
+            cancellationToken);
     }
 
     /// <summary>

@@ -13,13 +13,17 @@
 // limitations under the License.
 
 import type {
+  CreateSnapshotRequest,
   CreateSandboxRequest,
   CreateSandboxResponse,
   Endpoint,
+  ListSnapshotsParams,
+  ListSnapshotsResponse,
   ListSandboxesParams,
   ListSandboxesResponse,
   RenewSandboxExpirationRequest,
   RenewSandboxExpirationResponse,
+  SnapshotInfo,
   SandboxId,
   SandboxInfo,
 } from "../models/sandboxes.js";
@@ -37,6 +41,15 @@ export interface Sandboxes {
     sandboxId: SandboxId,
     req: RenewSandboxExpirationRequest,
   ): Promise<RenewSandboxExpirationResponse>;
+
+  createSnapshot(
+    sandboxId: SandboxId,
+    req?: CreateSnapshotRequest,
+  ): Promise<SnapshotInfo>;
+
+  getSnapshot(snapshotId: string): Promise<SnapshotInfo>;
+  listSnapshots(params?: ListSnapshotsParams): Promise<ListSnapshotsResponse>;
+  deleteSnapshot(snapshotId: string): Promise<void>;
 
   getSandboxEndpoint(
     sandboxId: SandboxId,

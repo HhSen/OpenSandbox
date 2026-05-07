@@ -721,7 +721,8 @@ class SandboxInfo(
     val entrypoint: List<String>,
     val expiresAt: OffsetDateTime?,
     val createdAt: OffsetDateTime,
-    val image: SandboxImageSpec,
+    val image: SandboxImageSpec? = null,
+    val snapshotId: String? = null,
     val platform: PlatformSpec? = null,
     val metadata: Map<String, String>? = null,
 )
@@ -750,6 +751,74 @@ class SandboxStatus(
 class SandboxCreateResponse(
     val id: String,
     val platform: PlatformSpec? = null,
+)
+
+class SnapshotStatus(
+    val state: String,
+    val reason: String?,
+    val message: String?,
+    val lastTransitionAt: OffsetDateTime?,
+)
+
+class SnapshotInfo(
+    val id: String,
+    val sandboxId: String,
+    val name: String? = null,
+    val status: SnapshotStatus,
+    val createdAt: OffsetDateTime,
+)
+
+class SnapshotFilter private constructor(
+    val sandboxId: String?,
+    val states: List<String>?,
+    val pageSize: Int?,
+    val page: Int?,
+) {
+    companion object {
+        @JvmStatic
+        fun builder(): Builder = Builder()
+    }
+
+    class Builder {
+        private var sandboxId: String? = null
+        private var states: List<String>? = null
+        private var pageSize: Int? = null
+        private var page: Int? = null
+
+        fun sandboxId(sandboxId: String): Builder {
+            this.sandboxId = sandboxId
+            return this
+        }
+
+        fun states(states: List<String>): Builder {
+            this.states = states
+            return this
+        }
+
+        fun states(vararg states: String): Builder {
+            this.states = states.toList()
+            return this
+        }
+
+        fun pageSize(pageSize: Int): Builder {
+            require(pageSize > 0) { "Page size must be positive" }
+            this.pageSize = pageSize
+            return this
+        }
+
+        fun page(page: Int): Builder {
+            require(page > 0) { "Page must be positive" }
+            this.page = page
+            return this
+        }
+
+        fun build(): SnapshotFilter = SnapshotFilter(sandboxId, states, pageSize, page)
+    }
+}
+
+class PagedSnapshotInfos(
+    val snapshotInfos: List<SnapshotInfo>,
+    val pagination: PaginationInfo,
 )
 
 /**

@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -40,6 +41,7 @@ import (
 
 	sandboxv1alpha1 "github.com/alibaba/OpenSandbox/sandbox-k8s/apis/sandbox/v1alpha1"
 	"github.com/alibaba/OpenSandbox/sandbox-k8s/internal/controller"
+	poolassign "github.com/alibaba/OpenSandbox/sandbox-k8s/internal/controller/poolassign"
 	cryptoutil "github.com/alibaba/OpenSandbox/sandbox-k8s/internal/utils/crypto"
 	"github.com/alibaba/OpenSandbox/sandbox-k8s/internal/utils/fieldindex"
 	"github.com/alibaba/OpenSandbox/sandbox-k8s/internal/utils/logging"
@@ -191,6 +193,26 @@ func main() {
 	flag.Var(&concurrencyConfig, "concurrency", "Controller concurrency settings in format: controller1=N;controller2=M. "+
 		"Available controllers: batchsandbox, pool. "+
 		"Example: --concurrency='batchsandbox=32;pool=128'")
+
+	// Image committer
+	var imageCommitterImage string
+	flag.StringVar(&imageCommitterImage, "image-committer-image", "image-committer:dev", "The image used for commit operations (contains nerdctl tool).")
+
+	// Commit job timeout
+	var commitJobTimeout time.Duration
+	flag.DurationVar(&commitJobTimeout, "commit-job-timeout", 10*time.Minute, "The timeout duration for commit jobs.")
+
+	var snapshotRegistry string
+	flag.StringVar(&snapshotRegistry, "snapshot-registry", "", "OCI registry for snapshot images (e.g., registry.example.com/snapshots).")
+
+	var snapshotRegistryInsecure bool
+	flag.BoolVar(&snapshotRegistryInsecure, "snapshot-registry-insecure", false, "Use insecure registry mode when pushing snapshot images.")
+
+	var snapshotPushSecret string
+	flag.StringVar(&snapshotPushSecret, "snapshot-push-secret", "", "K8s Secret name for pushing snapshots to registry.")
+
+	var resumePullSecret string
+	flag.StringVar(&resumePullSecret, "resume-pull-secret", "", "K8s Secret name for pulling snapshot images during resume.")
 
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
@@ -389,10 +411,19 @@ func main() {
 	poolConcurrency := concurrencyConfig.Get(poolKindName, defaultPoolConcurrency)
 	setupLog.Info("controller concurrency configured", batchSandboxKindName, batchSandboxConcurrency, poolKindName, poolConcurrency)
 
+	profileStore := poolassign.NewProfileStore()
+	_ = profileStore.LoadDefault()
+	if err := profileStore.SetupWithManager(mgr, os.Getenv("POD_NAMESPACE")); err != nil {
+		setupLog.Error(err, "failed to setup pool assign profiles ConfigMap watch")
+		os.Exit(1)
+	}
+
 	if err := (&controller.BatchSandboxReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("batchsandbox-controller"),
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		Recorder:         mgr.GetEventRecorderFor("batchsandbox-controller"),
+		ResumePullSecret: resumePullSecret,
+		ProfileStore:     profileStore,
 	}).SetupWithManager(mgr, batchSandboxConcurrency); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "BatchSandbox")
 		os.Exit(1)
@@ -405,6 +436,19 @@ func main() {
 		RestConfig: mgr.GetConfig(),
 	}).SetupWithManager(mgr, poolConcurrency); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Pool")
+		os.Exit(1)
+	}
+	if err := (&controller.SandboxSnapshotReconciler{
+		Client:                   mgr.GetClient(),
+		Scheme:                   mgr.GetScheme(),
+		Recorder:                 mgr.GetEventRecorderFor("sandboxsnapshot-controller"),
+		ImageCommitterImage:      imageCommitterImage,
+		CommitJobTimeout:         commitJobTimeout,
+		SnapshotRegistry:         snapshotRegistry,
+		SnapshotRegistryInsecure: snapshotRegistryInsecure,
+		SnapshotPushSecret:       snapshotPushSecret,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "SandboxSnapshot")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

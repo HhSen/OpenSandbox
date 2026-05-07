@@ -224,7 +224,7 @@ class TestKubernetesSandboxServiceCreate:
         self, k8s_service, create_sandbox_request
     ):
         create_sandbox_request.network_policy = NetworkPolicy(default_action="deny", egress=[])
-        k8s_service.app_config.egress = EgressConfig(image="opensandbox/egress:v1.0.9")
+        k8s_service.app_config.egress = EgressConfig(image="opensandbox/egress:v1.0.10")
         k8s_service.workload_provider.create_workload.return_value = {
             "name": "test-id", "uid": "uid-1"
         }
@@ -298,7 +298,7 @@ class TestKubernetesSandboxServiceCreate:
     ):
         create_sandbox_request.network_policy = NetworkPolicy(default_action="deny", egress=[])
         k8s_service.app_config.egress = EgressConfig(
-            image="opensandbox/egress:v1.0.9",
+            image="opensandbox/egress:v1.0.10",
             mode=EGRESS_MODE_DNS_NFT,
         )
         k8s_service.workload_provider.create_workload.return_value = {
@@ -832,7 +832,7 @@ class TestDeleteSandbox:
     def test_delete_existing_sandbox_succeeds(self, k8s_service, mock_workload):
         k8s_service.workload_provider.get_workload.return_value = mock_workload
         k8s_service.workload_provider.delete_workload.return_value = None
-        
+
         k8s_service.delete_sandbox("test-sandbox-id")
         
         k8s_service.workload_provider.delete_workload.assert_called_once_with(
@@ -843,7 +843,7 @@ class TestDeleteSandbox:
     def test_delete_nonexistent_sandbox_raises_404(self, k8s_service):
         # Mock delete_workload to raise exception containing "not found"
         k8s_service.workload_provider.delete_workload.side_effect = Exception("Sandbox not found")
-        
+
         with pytest.raises(HTTPException) as exc_info:
             k8s_service.delete_sandbox("nonexistent-id")
         

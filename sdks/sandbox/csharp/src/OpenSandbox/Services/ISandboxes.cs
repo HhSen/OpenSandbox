@@ -104,6 +104,23 @@ public interface ISandboxes
         RenewSandboxExpirationRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<SnapshotInfo> CreateSnapshotAsync(
+        string sandboxId,
+        CreateSnapshotRequest? request = null,
+        CancellationToken cancellationToken = default);
+
+    Task<SnapshotInfo> GetSnapshotAsync(
+        string snapshotId,
+        CancellationToken cancellationToken = default);
+
+    Task<ListSnapshotsResponse> ListSnapshotsAsync(
+        ListSnapshotsParams? @params = null,
+        CancellationToken cancellationToken = default);
+
+    Task DeleteSnapshotAsync(
+        string snapshotId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Gets the endpoint for a sandbox port.
     /// </summary>

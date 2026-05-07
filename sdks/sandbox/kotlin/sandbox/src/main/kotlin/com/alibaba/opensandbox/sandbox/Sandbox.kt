@@ -31,6 +31,7 @@ import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxImageSpec
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxInfo
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxMetrics
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxRenewResponse
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SnapshotInfo
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.Volume
 import com.alibaba.opensandbox.sandbox.domain.services.Commands
 import com.alibaba.opensandbox.sandbox.domain.services.Egress
@@ -287,8 +288,9 @@ class Sandbox internal constructor(
          * @throws SandboxException if sandbox creation or initialization fails
          */
         private fun create(
-            imageSpec: SandboxImageSpec,
-            entrypoint: List<String>,
+            imageSpec: SandboxImageSpec?,
+            entrypoint: List<String>?,
+            snapshotId: String?,
             env: Map<String, String>,
             metadata: Map<String, String>,
             timeout: Duration?,
@@ -306,7 +308,7 @@ class Sandbox internal constructor(
         ): Sandbox {
             val timeoutLabel = if (timeout != null) "${timeout.seconds}s" else "manual-cleanup"
             return initializeSandbox(
-                operationName = "create sandbox with image ${imageSpec.image} (timeout: $timeoutLabel)",
+                operationName = "create sandbox with startup source ${imageSpec?.image ?: snapshotId} (timeout: $timeoutLabel)",
                 connectionConfig = connectionConfig,
                 healthCheck = healthCheck,
                 timeout = readyTimeout,
@@ -326,6 +328,7 @@ class Sandbox internal constructor(
                         volumes,
                         platform,
                         secureAccess,
+                        snapshotId,
                     )
                 InitializationResult.NewSandbox(response.id)
             }
@@ -457,6 +460,8 @@ class Sandbox internal constructor(
         logger.info("Renew sandbox {} timeout, estimated expiration to {}", id, OffsetDateTime.now().plus(timeout))
         return sandboxService.renewSandboxExpiration(id, OffsetDateTime.now().plus(timeout))
     }
+
+    fun createSnapshot(name: String? = null): SnapshotInfo = sandboxService.createSnapshot(id, name)
 
     /**
      * Gets current egress policy for this sandbox.
@@ -803,6 +808,7 @@ class Sandbox internal constructor(
          * Image config
          */
         private var imageSpec: SandboxImageSpec? = null
+        private var snapshotId: String? = null
 
         /**
          * Sandbox entrypoint
@@ -889,6 +895,7 @@ class Sandbox internal constructor(
                 SandboxImageSpec.builder()
                     .image(image)
                     .build()
+            this.snapshotId = null
             return this
         }
 
@@ -900,6 +907,16 @@ class Sandbox internal constructor(
          */
         fun imageSpec(imageSpec: SandboxImageSpec): Builder {
             this.imageSpec = imageSpec
+            this.snapshotId = null
+            return this
+        }
+
+        fun snapshotId(snapshotId: String): Builder {
+            if (snapshotId.isBlank()) {
+                throw InvalidArgumentException(message = "Snapshot ID cannot be blank")
+            }
+            this.snapshotId = snapshotId
+            this.imageSpec = null
             return this
         }
 
@@ -1250,17 +1267,19 @@ class Sandbox internal constructor(
         fun build(): Sandbox {
             // Validate required configuration
             val spec =
-                imageSpec ?: throw InvalidArgumentException(
-                    message = "Sandbox image must be specified",
+                imageSpec
+            if ((spec == null) == (snapshotId == null)) {
+                throw InvalidArgumentException(
+                    message = "Exactly one of sandbox image or snapshotId must be specified",
                 )
-
-            // Validate image specification
-            if (spec.image.isBlank()) {
+            }
+            if (spec != null && spec.image.isBlank()) {
                 throw InvalidArgumentException("Sandbox image cannot be blank")
             }
 
             return create(
                 imageSpec = spec,
+                snapshotId = snapshotId,
                 entrypoint = entrypoint,
                 env = env,
                 metadata = metadata,

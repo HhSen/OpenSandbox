@@ -14,28 +14,15 @@ When a contract change affects downstream code, also read the nearest consumer g
 
 - `../server/AGENTS.md` for lifecycle server impact
 - `../sdks/AGENTS.md` for SDK-facing contract changes
+- component README/DEVELOPMENT files under `../components/` for execd or egress impact
+- `../cli/README.md` for CLI-visible diagnostics, lifecycle, or egress changes
 
 ## Contract Map
 
-| Spec | Consumers | Code generation |
-|------|-----------|-----------------|
-| `sandbox-lifecycle.yml` | `server/`, all sandbox SDKs | Python, JS, Kotlin, Go (not C#) |
-| `execd-api.yaml` | `components/execd/`, code-interpreter SDKs | Python, JS, Kotlin, Go (not C#) |
-| `egress-api.yaml` | `components/egress/` | Python, JS, Kotlin, Go (not C#) |
-| `diagnostic-api.yml` | `server/` (diagnostics endpoints) | **No SDK generation** — orphaned spec |
-
-## Codegen Regeneration
-
-After editing any spec, regenerate all language clients:
-
-| Language | Command |
-|----------|---------|
-| Python | `cd sdks/sandbox/python && uv run python scripts/generate_api.py` |
-| JS/TS | `cd sdks/sandbox/javascript && pnpm run gen:api` |
-| Kotlin | `cd sdks/sandbox/kotlin && ./gradlew :sandbox-api:generateLifecycleApi :sandbox-api:generateExecdApi :sandbox-api:generateEgressApi` |
-| Go | `cd sdks/sandbox/go && make generate` |
-
-**Note:** Go SDK vendored spec copies live in `sdks/sandbox/go/api/specs/` — update them when specs change.
+- `sandbox-lifecycle.yml`: lifecycle API used by `server/`, `cli/`, and sandbox SDKs
+- `diagnostic-api.yml`: diagnostics API used by server diagnostics, CLI diagnostics, and troubleshooting flows
+- `execd-api.yaml`: execution API used by `components/execd/` and code-interpreter SDKs
+- `egress-api.yaml`: egress sidecar API and related docs
 
 ## Commands
 
@@ -70,6 +57,7 @@ Always:
 - Keep operation IDs, schema names, examples, and descriptions consistent with existing naming.
 - Regenerate derived outputs after spec edits.
 - Update affected consumers in the same change when practical.
+- Keep spec examples aligned with server schemas and generated SDK models.
 - Call out downstream areas you did not verify.
 
 Ask first:

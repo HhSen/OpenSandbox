@@ -23,8 +23,10 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 from opensandbox.models.sandboxes import (
+    CreateSnapshotRequest,
     NetworkPolicy,
     PagedSandboxInfos,
+    PagedSnapshotInfos,
     PlatformSpec,
     SandboxCreateResponse,
     SandboxEndpoint,
@@ -32,6 +34,8 @@ from opensandbox.models.sandboxes import (
     SandboxImageSpec,
     SandboxInfo,
     SandboxRenewResponse,
+    SnapshotFilter,
+    SnapshotInfo,
     Volume,
 )
 
@@ -46,8 +50,8 @@ class Sandboxes(Protocol):
 
     async def create_sandbox(
         self,
-        spec: SandboxImageSpec,
-        entrypoint: list[str],
+        spec: SandboxImageSpec | None,
+        entrypoint: list[str] | None,
         env: dict[str, str],
         metadata: dict[str, str],
         timeout: timedelta | None,
@@ -57,6 +61,7 @@ class Sandboxes(Protocol):
         volumes: list[Volume] | None,
         platform: PlatformSpec | None = None,
         secure_access: bool = False,
+        snapshot_id: str | None = None,
     ) -> SandboxCreateResponse:
         """
         Create a new sandbox with the specified configuration.
@@ -204,4 +209,22 @@ class Sandboxes(Protocol):
         Raises:
             SandboxException: if the operation fails
         """
+        ...
+
+    async def create_snapshot(
+        self, sandbox_id: str, request: CreateSnapshotRequest | None = None
+    ) -> SnapshotInfo:
+        """Create a persistent snapshot from a sandbox."""
+        ...
+
+    async def get_snapshot(self, snapshot_id: str) -> SnapshotInfo:
+        """Retrieve information about an existing snapshot."""
+        ...
+
+    async def list_snapshots(self, filter: SnapshotFilter) -> PagedSnapshotInfos:
+        """List snapshots with optional filtering."""
+        ...
+
+    async def delete_snapshot(self, snapshot_id: str) -> None:
+        """Delete a snapshot."""
         ...
