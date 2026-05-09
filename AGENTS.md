@@ -176,3 +176,5 @@ Never:
 
 - Edit generated output as the only fix.
 - Mix unrelated component work into the same change.
+
+Most importantly, explore in the monolithic project but implement the code via subagents as there are multiple components inside this project.

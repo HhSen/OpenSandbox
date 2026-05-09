@@ -5,33 +5,32 @@
 
 set -e
 
-echo "[entrypoint] USERNAME=${USERNAME} SESSION_ID=${SESSION_ID}"
+echo "[entrypoint] USERNAME=${USERNAME} TASK_ID=${TASK_ID}"
 
 # Ensure Node.js is in PATH using the default version bundled in the base image
 source /opt/opensandbox/code-interpreter-env.sh node
 
 # --- OrangeFS: two-tier mount for Claude Code persistence ---
 #
-# Global (shared across all sessions for this user):
-#   username/.claude/              → /root/.claude
-#   Holds: settings, history, hooks, session transcripts — user-level Claude Code state.
+# Global (shared across all tasks for this user):
+#   username/.claude/   → /root/.claude
 #
-# Session-specific (isolated per SESSION_ID):
-#   username/session_id/workspace/ → /workspace
-#   Holds: working files, artifacts, and the project-level /workspace/.claude/ config.
+# Task-specific workspace (when TASK_ID is set):
+#   username/task_id/   → /workspace/username/task_id
+#   The deep mount path doubles as the agent's cwd, so each task gets its own
+#   bucket under ~/.claude/projects/ instead of colliding under -workspace.
+#   Pass TASK_ID to a new sandbox to resume.
 #
-# Pass the same SESSION_ID to resume; use a new UUID for a fresh session.
+# Mounts must be ready before the server takes requests: a resume request
+# needs the session jsonl from cloud storage, otherwise the server reads an
+# empty local dir and the session looks gone.
 if [ -x /usr/local/bin/orangefs ] && [ -n "${USERNAME:-}" ]; then
-
-  # Validate to prevent path traversal via USERNAME or SESSION_ID
   if [[ ! "${USERNAME}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
     echo "[entrypoint] ERROR: USERNAME contains invalid characters — skipping OrangeFS mounts"
-  elif [ -n "${SESSION_ID:-}" ] && [[ ! "${SESSION_ID}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-    echo "[entrypoint] ERROR: SESSION_ID contains invalid characters — skipping OrangeFS mounts"
+  elif [ -n "${TASK_ID:-}" ] && [[ ! "${TASK_ID}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "[entrypoint] ERROR: TASK_ID contains invalid characters — skipping OrangeFS mounts"
   else
     mkdir -p /root/.claude
-
-    echo "[entrypoint] mounting /root/.claude (global) from orangefs (${USERNAME}/.claude)..."
     nohup /usr/local/bin/orangefs posix mount \
       --rs-addr="${ORANGEFS_RS_ADDR:-}" \
       --token="${ORANGEFS_TOKEN:-}" \
@@ -39,59 +38,39 @@ if [ -x /usr/local/bin/orangefs ] && [ -n "${USERNAME:-}" ]; then
       --subpath="${USERNAME}/.claude" \
       --mount-point="/root/.claude" > /tmp/orangefs-claude.log 2>&1 &
 
-    if [ -n "${SESSION_ID:-}" ]; then
-      mkdir -p /workspace
-
-      echo "[entrypoint] mounting /workspace (session) from orangefs (${USERNAME}/${SESSION_ID}/workspace)..."
+    if [ -n "${TASK_ID:-}" ]; then
+      WORKSPACE_TASK_DIR="/workspace/${USERNAME}/${TASK_ID}"
+      mkdir -p "${WORKSPACE_TASK_DIR}"
       nohup /usr/local/bin/orangefs posix mount \
         --rs-addr="${ORANGEFS_RS_ADDR:-}" \
         --token="${ORANGEFS_TOKEN:-}" \
         --volume-name="${ORANGEFS_VOLUME:-}" \
-        --subpath="${USERNAME}/${SESSION_ID}/workspace" \
-        --mount-point="/workspace" > /tmp/orangefs-workspace.log 2>&1 &
+        --subpath="${USERNAME}/${TASK_ID}" \
+        --mount-point="${WORKSPACE_TASK_DIR}" > /tmp/orangefs-workspace.log 2>&1 &
     fi
 
-    echo "[entrypoint] waiting for mounts to be ready..."
-    MOUNT_TIMEOUT=30
-    MOUNT_ELAPSED=0
-    while true; do
-      CLAUDE_UP=$(mountpoint -q /root/.claude && echo 1 || echo 0)
-      if [ -z "${SESSION_ID:-}" ]; then
-        WORKSPACE_UP=1
+    # Block until mounts are ready (or timeout). Poll fast for low latency.
+    for _ in $(seq 1 60); do
+      mountpoint -q /root/.claude && CLAUDE=1 || CLAUDE=0
+      if [ -n "${TASK_ID:-}" ]; then
+        mountpoint -q "/workspace/${USERNAME}/${TASK_ID}" && WS=1 || WS=0
       else
-        WORKSPACE_UP=$(mountpoint -q /workspace && echo 1 || echo 0)
+        WS=1
       fi
-      if [ "$CLAUDE_UP" = "1" ] && [ "$WORKSPACE_UP" = "1" ]; then break; fi
-      if [ "$MOUNT_ELAPSED" -ge "$MOUNT_TIMEOUT" ]; then
-        break
-      fi
-      sleep 1
-      MOUNT_ELAPSED=$((MOUNT_ELAPSED + 1))
+      [ "$CLAUDE" = "1" ] && [ "$WS" = "1" ] && break
+      sleep 0.25
     done
-
-    if mountpoint -q /root/.claude; then
-      echo "[entrypoint] /root/.claude mounted successfully"
-    else
-      echo "[entrypoint] /root/.claude mount FAILED:"; cat /tmp/orangefs-claude.log
-    fi
-
-    if [ -n "${SESSION_ID:-}" ]; then
-      if mountpoint -q /workspace; then
-        echo "[entrypoint] /workspace mounted successfully"
-      else
-        echo "[entrypoint] /workspace mount FAILED:"; cat /tmp/orangefs-workspace.log
-      fi
-    fi
+    echo "[entrypoint] orangefs status: claude=${CLAUDE} workspace=${WS}"
+    [ "$CLAUDE" != "1" ] && cat /tmp/orangefs-claude.log
+    [ -n "${TASK_ID:-}" ] && [ "$WS" != "1" ] && cat /tmp/orangefs-workspace.log
   fi
 else
   echo "[entrypoint] skipping orangefs mounts — binary absent or USERNAME not set"
 fi
 
 # Bootstrap /root/.claude.json from ANTHROPIC_API_KEY when it doesn't exist.
-# This file lives at $HOME, outside the /root/.claude mount, and is not persisted.
-# Auth credentials are injected via env var in all sandbox deployments.
+# Lives at $HOME, outside the /root/.claude mount, and is not persisted.
 if [ -n "${ANTHROPIC_API_KEY:-}" ] && [ ! -f /root/.claude.json ]; then
-  echo "[entrypoint] bootstrapping /root/.claude.json from ANTHROPIC_API_KEY"
   echo '{}' > /root/.claude.json
 fi
 
