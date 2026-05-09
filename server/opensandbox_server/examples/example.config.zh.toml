@@ -56,6 +56,9 @@ apparmor_profile = ""
 pids_limit = 4096
 # Seccomp profile: empty string uses Docker default; set to an absolute path for a custom profile
 seccomp_profile = ""
+# 将宿主机设备透传给沙箱容器（Docker 设备字符串格式："host:container:perms" 或 "path"）
+# 如需在沙箱内启用 FUSE 挂载（如 OrangeFS/ossfs），请添加 /dev/fuse 并从 drop_capabilities 中移除 SYS_ADMIN：
+# devices = ["/dev/fuse"]
 
 [ingress]
 mode = "direct"

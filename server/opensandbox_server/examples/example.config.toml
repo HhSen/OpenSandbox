@@ -58,6 +58,9 @@ apparmor_profile = ""
 pids_limit = 4096
 # Seccomp profile: empty string uses Docker default; set to an absolute path for a custom profile
 seccomp_profile = ""
+# Pass host devices into sandbox containers (Docker device-string format: "host:container:perms" or "path")
+# To enable FUSE-based mounts (e.g. OrangeFS/ossfs), add /dev/fuse and remove SYS_ADMIN from drop_capabilities:
+# devices = ["/dev/fuse"]
 
 [ingress]
 mode = "direct"

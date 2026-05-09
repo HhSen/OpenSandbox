@@ -801,6 +801,15 @@ class DockerConfig(BaseModel):
             "Only enable this in trusted, isolated environments."
         ),
     )
+    devices: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Host devices to pass through into sandbox containers, in Docker device-string format: "
+            "'host_path:container_path:permissions' or just 'path' (maps to the same path with rwm). "
+            "Example: [\"/dev/fuse\"] to enable FUSE-based mounts inside sandboxes "
+            "(also remove SYS_ADMIN from drop_capabilities)."
+        ),
+    )
 
 
 class StoreConfig(BaseModel):

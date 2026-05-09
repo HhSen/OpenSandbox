@@ -103,6 +103,8 @@ Example files in this repository:
 | `no_new_privileges` | boolean | `true` | Sets `no-new-privileges` to block privilege escalation. |
 | `seccomp_profile` | string \| omitted | `null` | Seccomp profile name or **absolute path**; empty uses Docker default seccomp. |
 | `pids_limit` | integer \| null | `4096` | Max PIDs per sandbox container; set to **`null`** to disable the limit. |
+| `privileged` | boolean | `false` | Run sandbox containers in privileged mode. When `true`, `cap_drop` and `no_new_privileges` have no effect. Only use in trusted, isolated environments. |
+| `devices` | list of strings | `[]` | Host devices to pass through into sandbox containers, in Docker device-string format: `"host_path:container_path:permissions"` or just `"path"` (maps to the same path with `rwm`). Example: `["/dev/fuse"]` to enable FUSE-based filesystem mounts inside sandboxes — also remove `SYS_ADMIN` from `drop_capabilities` when using FUSE. |
 
 ---
 

@@ -32,6 +32,7 @@ drop_capabilities = [
     "SYS_TIME",
     "SYS_TTY_CONFIG",
 ]
+devices = ["/dev/fuse"]
 no_new_privileges = true
 pids_limit = 4096
 privileged = true
