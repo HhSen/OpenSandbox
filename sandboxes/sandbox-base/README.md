@@ -22,7 +22,7 @@ These variables enable two-tier persistence via OrangeFS. `USERNAME` alone enabl
 | Variable | Description |
 |---|---|
 | `USERNAME` | User identifier. Must match `^[a-zA-Z0-9_-]+$`. Determines the user-level subpath in OrangeFS. |
-| `SESSION_ID` | Session identifier. Must match `^[a-zA-Z0-9_-]+$`. Pass a new UUID for a fresh session; reuse the same value to resume. |
+| `TASK_ID` | Task identifier. Must match `^[a-zA-Z0-9_-]+$`. Pass a new UUID for a fresh task; reuse the same value to resume. |
 | `ORANGEFS_RS_ADDR` | OrangeFS registry server address. |
 | `ORANGEFS_TOKEN` | OrangeFS authentication token. |
 | `ORANGEFS_VOLUME` | OrangeFS volume name. |
@@ -32,21 +32,19 @@ These variables enable two-tier persistence via OrangeFS. `USERNAME` alone enabl
 ```
 OrangeFS volume/
   {USERNAME}/
-    .claude/                        ← global user config (shared across all sessions)
+    .claude/                        ← global user config (shared across all tasks)
       settings.json                 ← Claude Code settings
       CLAUDE.md                     ← global instructions
       history.jsonl                 ← command history
       hooks/                        ← hook scripts
-      projects/                     ← conversation histories (all sessions)
-    {SESSION_ID}/
-      workspace/                    ← session working files and artifacts
-        .claude/                    ← project-level Claude Code config (CLAUDE.md, local settings)
-        <your files>
+      projects/                     ← conversation histories (all tasks)
+    {TASK_ID}/                      ← task-specific workspace
+      <your files>
 
 Container mounts:
-  /root/.claude/   ← OrangeFS: {USERNAME}/.claude/      (global, shared)
-  /workspace/      ← OrangeFS: {USERNAME}/{SESSION_ID}/workspace/  (session-specific)
-  /root/.claude.json  ← bootstrapped from ANTHROPIC_API_KEY (not persisted)
+  /root/.claude/                    ← OrangeFS: {USERNAME}/.claude/   (global, shared)
+  /workspace/{USERNAME}/{TASK_ID}/  ← OrangeFS: {USERNAME}/{TASK_ID}/ (task-specific)
+  /root/.claude.json                ← bootstrapped from ANTHROPIC_API_KEY (not persisted)
 ```
 
 ## Fallback Behaviour
@@ -56,7 +54,7 @@ All persistence variables are optional. The table below shows what is lost and w
 | What is omitted | Effect |
 |---|---|
 | None omitted (full config) | Full persistence: Claude Code config, workspace files, and conversation history all survive container destruction. |
-| `SESSION_ID` not set | Global Claude Code config (`/root/.claude`) persists via OrangeFS; `/workspace` is ephemeral inside the container. |
+| `TASK_ID` not set | Global Claude Code config (`/root/.claude`) persists via OrangeFS; `/workspace` is ephemeral inside the container. |
 | `USERNAME` not set (or OrangeFS binary absent) | Both mounts skipped. All state is ephemeral. |
 | `ANTHROPIC_API_KEY` not set and no persisted config | Claude Code runs but prompts for interactive login on first use. |
 | All omitted | Fully ephemeral: works for one-off tasks, nothing persists. |
@@ -74,7 +72,7 @@ The following example shows a complete `CreateSandboxRequest` body using the Ope
   "env": {
     "ANTHROPIC_API_KEY": "<your-anthropic-api-key>",
     "USERNAME": "<user-id>",
-    "SESSION_ID": "<session-id>",
+    "TASK_ID": "<task-id>",
     "ORANGEFS_RS_ADDR": "<orangefs-registry-addr>",
     "ORANGEFS_TOKEN": "<orangefs-token>",
     "ORANGEFS_VOLUME": "<orangefs-volume>"
@@ -94,7 +92,7 @@ sandbox = await Sandbox.create(
     env={
         "ANTHROPIC_API_KEY": anthropic_api_key,
         "USERNAME": user_id,
-        "SESSION_ID": session_id,
+        "TASK_ID": task_id,
         "ORANGEFS_RS_ADDR": orangefs_addr,
         "ORANGEFS_TOKEN": orangefs_token,
         "ORANGEFS_VOLUME": orangefs_volume,
@@ -103,7 +101,7 @@ sandbox = await Sandbox.create(
 )
 ```
 
-To resume a previous session, create a new sandbox with the **same `SESSION_ID`**. Claude Code will see the prior workspace files and its full conversation history.
+To resume a previous task, create a new sandbox with the **same `TASK_ID`**. Claude Code will see the prior workspace files and its full conversation history.
 
 ### Minimal (no persistence)
 
