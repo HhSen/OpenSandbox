@@ -14,6 +14,7 @@ from opensandbox.exceptions import (
     PoolEmptyException,
     PoolNotRunningException,
 )
+from opensandbox.models.sandboxes import PlatformSpec
 from opensandbox.pool import (
     AcquirePolicy,
     InMemoryAsyncPoolStateStore,
@@ -63,6 +64,37 @@ async def test_async_acquire_direct_create_when_empty() -> None:
         fake_sandbox = cast(FakeAsyncSandbox, sandbox)
         assert sandbox.id == "created-1"
         assert fake_sandbox.renewed == [timedelta(minutes=5)]
+    finally:
+        await pool.shutdown(False)
+
+
+@pytest.mark.asyncio
+async def test_async_acquire_direct_create_forwards_pool_creation_platform() -> None:
+    captured_kwargs: dict[str, Any] = {}
+
+    class CapturingAsyncSandbox(FakeAsyncSandbox):
+        @classmethod
+        async def create(cls, *args: Any, **kwargs: Any) -> CapturingAsyncSandbox:
+            captured_kwargs.update(kwargs)
+            return cls("created-with-platform")
+
+    pool = SandboxPoolAsync(
+        pool_name="pool",
+        owner_id="owner-1",
+        max_idle=0,
+        state_store=InMemoryAsyncPoolStateStore(),
+        connection_config=ConnectionConfig(),
+        creation_spec=PoolCreationSpec(
+            image="ubuntu:22.04",
+            platform=PlatformSpec(os="linux", arch="arm64"),
+        ),
+        sandbox_factory=CapturingAsyncSandbox,  # type: ignore[arg-type]
+    )
+    await pool.start()
+    try:
+        await pool.acquire()
+
+        assert captured_kwargs["platform"] == PlatformSpec(os="linux", arch="arm64")
     finally:
         await pool.shutdown(False)
 

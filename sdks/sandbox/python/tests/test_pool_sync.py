@@ -14,6 +14,7 @@ from opensandbox.exceptions import (
     PoolEmptyException,
     PoolNotRunningException,
 )
+from opensandbox.models.sandboxes import PlatformSpec
 from opensandbox.pool import AcquirePolicy, InMemoryPoolStateStore, PoolCreationSpec
 from opensandbox.sync.pool import SandboxPoolSync
 
@@ -56,6 +57,37 @@ def test_acquire_direct_create_when_empty() -> None:
         fake_sandbox = cast(FakeSandbox, sandbox)
         assert sandbox.id == "created-1"
         assert fake_sandbox.renewed == [timedelta(minutes=5)]
+    finally:
+        pool.shutdown(False)
+
+
+def test_acquire_direct_create_forwards_pool_creation_platform() -> None:
+    captured_kwargs: dict[str, Any] = {}
+
+    class CapturingSandbox(FakeSandbox):
+        @classmethod
+        def create(cls, *args: Any, **kwargs: Any) -> CapturingSandbox:
+            captured_kwargs.update(kwargs)
+            return cls("created-with-platform")
+
+    pool = SandboxPoolSync(
+        pool_name="pool",
+        owner_id="owner-1",
+        max_idle=0,
+        state_store=InMemoryPoolStateStore(),
+        connection_config=ConnectionConfigSync(),
+        creation_spec=PoolCreationSpec(
+            image="ubuntu:22.04",
+            platform=PlatformSpec(os="linux", arch="arm64"),
+        ),
+        sandbox_manager_factory=lambda config: FakeManager(),  # type: ignore[arg-type,return-value]
+        sandbox_factory=CapturingSandbox,  # type: ignore[arg-type]
+    )
+    pool.start()
+    try:
+        pool.acquire()
+
+        assert captured_kwargs["platform"] == PlatformSpec(os="linux", arch="arm64")
     finally:
         pool.shutdown(False)
 
