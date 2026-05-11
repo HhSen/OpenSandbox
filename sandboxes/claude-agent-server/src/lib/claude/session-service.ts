@@ -20,6 +20,8 @@ import { z } from 'zod'
 import { config } from '../config.js'
 import { HttpError } from '../http/errors.js'
 import { normalizeMessage, type NormalizedEvent } from './message-normalizer.js'
+import { permissionRegistry } from './permission-registry.js'
+import { questionRegistry } from './question-registry.js'
 import { runtimeRegistry } from './runtime-registry.js'
 import { permissionModeSchema, queryOptionsSchema, type QueryOptions } from './sdk-schemas.js'
 export type { QueryOptions } from './sdk-schemas.js'
@@ -221,7 +223,59 @@ export async function execute(
 
   const queryHandle = query({
     prompt: input.prompt,
-    options: buildOptions(input),
+    options: {
+      ...buildOptions(input),
+      canUseTool: async (toolName, toolInput, options) => {
+        const sid = discoveredSessionId ?? input.sessionId ?? 'unknown'
+
+        if (toolName === 'AskUserQuestion') {
+          return new Promise((resolve) => {
+            const questions = ((toolInput as { questions?: unknown[] }).questions ?? []) as Record<string, unknown>[]
+            onEvent?.({
+              event: 'question.asked',
+              data: { sessionId: sid, questions },
+            })
+            questionRegistry.register(sid, questions, (answers) => {
+              resolve({ behavior: 'allow', updatedInput: { questions, answers } })
+            })
+            setTimeout(() => {
+              if (questionRegistry.has(sid)) {
+                questionRegistry.delete(sid)
+                resolve({ behavior: 'deny', message: 'Question timed out' })
+              }
+            }, 5 * 60 * 1000)
+          })
+        }
+
+        return new Promise((resolve) => {
+          onEvent?.({
+            event: 'permission.requested',
+            data: {
+              sessionId: sid,
+              toolName,
+              toolInput,
+              toolUseId: options.toolUseID,
+              blockedPath: options.blockedPath ?? null,
+              decisionReason: options.decisionReason ?? null,
+            },
+          })
+          permissionRegistry.register(sid, (decision) => {
+            if (decision === 'allow') {
+              resolve({ behavior: 'allow', updatedInput: toolInput })
+            } else {
+              resolve({ behavior: 'deny', message: 'User denied this action' })
+            }
+          })
+          // Auto-deny after 5 minutes if no response
+          setTimeout(() => {
+            if (permissionRegistry.has(sid)) {
+              permissionRegistry.delete(sid)
+              resolve({ behavior: 'deny', message: 'Permission request timed out' })
+            }
+          }, 5 * 60 * 1000)
+        })
+      },
+    },
   })
 
   let discoveredSessionId = input.sessionId ?? null
@@ -407,6 +461,44 @@ export function sdkSessionInfoToResponse(info: SDKSessionInfo) {
     tag: info.tag ?? null,
     createdAt: info.createdAt ?? null,
   }
+}
+
+export const respondToPermissionBodySchema = z.object({
+  decision: z.enum(['allow', 'deny']),
+})
+
+/**
+ * Resolves a pending canUseTool permission request for the given session.
+ * Returns 404 if no permission request is currently pending.
+ */
+export async function respondToPermission(
+  sessionId: string,
+  decision: 'allow' | 'deny',
+): Promise<{ ok: true; sessionId: string; decision: 'allow' | 'deny' }> {
+  const resolved = permissionRegistry.respond(sessionId, decision)
+  if (!resolved) {
+    throw new HttpError(404, `No pending permission request for session ${sessionId}`)
+  }
+  return { ok: true, sessionId, decision }
+}
+
+export const respondToQuestionBodySchema = z.object({
+  answers: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
+})
+
+/**
+ * Resolves a pending AskUserQuestion request for the given session.
+ * Returns 404 if no question is currently pending.
+ */
+export async function respondToQuestion(
+  sessionId: string,
+  answers: Record<string, string | string[]>,
+): Promise<{ ok: true; sessionId: string }> {
+  const resolved = questionRegistry.respond(sessionId, answers)
+  if (!resolved) {
+    throw new HttpError(404, `No pending question for session ${sessionId}`)
+  }
+  return { ok: true, sessionId }
 }
 
 export function sessionMessageToResponse(message: SessionMessage) {

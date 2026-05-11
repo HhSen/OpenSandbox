@@ -19,6 +19,10 @@ import {
   patchModelBodySchema,
   patchPermissionModeBodySchema,
   patchSessionBodySchema,
+  respondToPermission,
+  respondToPermissionBodySchema,
+  respondToQuestion,
+  respondToQuestionBodySchema,
   rewindSessionBodySchema,
   rewindSessionFiles,
   sdkSessionInfoToResponse,
@@ -201,6 +205,24 @@ sessionsRouter.post(
       result: result.result,
       events: result.events,
     })
+  }),
+)
+
+sessionsRouter.post(
+  '/sessions/:sessionId/permissions/respond',
+  asyncHandler(async (req, res) => {
+    const input = respondToPermissionBodySchema.parse(req.body)
+    const result = await respondToPermission(sessionIdParam(req.params.sessionId), input.decision)
+    res.json(result)
+  }),
+)
+
+sessionsRouter.post(
+  '/sessions/:sessionId/questions/respond',
+  asyncHandler(async (req, res) => {
+    const input = respondToQuestionBodySchema.parse(req.body)
+    const result = await respondToQuestion(sessionIdParam(req.params.sessionId), input.answers)
+    res.json(result)
   }),
 )
 

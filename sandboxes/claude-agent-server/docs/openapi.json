@@ -516,7 +516,7 @@
     "/sessions/{sessionId}/subagents/{agentId}/messages": {
       "get": {
         "operationId": "sessions.subagents.messages",
-        "summary": "Get subagent messages (not yet implemented)",
+        "summary": "Get subagent messages",
         "parameters": [
           {
             "in": "path",
@@ -529,17 +529,54 @@
             "name": "agentId",
             "required": true,
             "schema": { "type": "string" }
+          },
+          {
+            "in": "query",
+            "name": "dir",
+            "schema": { "type": "string" }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "type": "integer", "minimum": 1 }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": { "type": "integer", "minimum": 0 }
+          },
+          {
+            "in": "query",
+            "name": "includeSystemMessages",
+            "schema": { "type": "boolean" }
           }
         ],
         "responses": {
-          "501": { "description": "Not implemented" }
+          "200": {
+            "description": "Subagent messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "messages": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/SessionMessage" }
+                    }
+                  },
+                  "required": ["messages"]
+                }
+              }
+            }
+          }
         }
       }
     },
     "/sessions/{sessionId}/model": {
       "patch": {
         "operationId": "sessions.setModel",
-        "summary": "Hot-swap model on a running session (not yet implemented)",
+        "summary": "Hot-swap model on a running session",
+        "description": "Changes the model on an active session. Requires an active run.",
         "parameters": [
           {
             "in": "path",
@@ -548,15 +585,46 @@
             "schema": { "type": "string" }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
         "responses": {
-          "501": { "description": "Not implemented" }
+          "200": {
+            "description": "Model updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "const": true },
+                    "sessionId": { "type": "string" },
+                    "model": { "type": "string" }
+                  },
+                  "required": ["ok", "sessionId"]
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
         }
       }
     },
     "/sessions/{sessionId}/permission-mode": {
       "patch": {
         "operationId": "sessions.setPermissionMode",
-        "summary": "Change permission mode on a running session (not yet implemented)",
+        "summary": "Change permission mode on a running session",
+        "description": "Changes the permission mode on an active session. bypassPermissions is rejected with 400. Requires an active run.",
         "parameters": [
           {
             "in": "path",
@@ -565,8 +633,151 @@
             "schema": { "type": "string" }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "permissionMode": { "type": "string", "enum": ["default", "acceptEdits", "plan", "dontAsk", "auto"] }
+                },
+                "required": ["permissionMode"]
+              }
+            }
+          }
+        },
         "responses": {
-          "501": { "description": "Not implemented" }
+          "200": {
+            "description": "Permission mode updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "const": true },
+                    "sessionId": { "type": "string" },
+                    "permissionMode": { "type": "string" }
+                  },
+                  "required": ["ok", "sessionId", "permissionMode"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (e.g. bypassPermissions is not allowed)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/sessions/{sessionId}/permissions/respond": {
+      "post": {
+        "operationId": "sessions.permissions.respond",
+        "summary": "Respond to a pending tool permission request",
+        "description": "Resolves the paused canUseTool callback after a permission.requested SSE event. Returns 404 if no permission request is currently pending for the session.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": { "type": "string", "enum": ["allow", "deny"] }
+                },
+                "required": ["decision"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Permission resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "const": true },
+                    "sessionId": { "type": "string" },
+                    "decision": { "type": "string", "enum": ["allow", "deny"] }
+                  },
+                  "required": ["ok", "sessionId", "decision"]
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/sessions/{sessionId}/questions/respond": {
+      "post": {
+        "operationId": "sessions.questions.respond",
+        "summary": "Answer a pending AskUserQuestion request",
+        "description": "Resolves the paused AskUserQuestion canUseTool callback after a question.asked SSE event. Returns 404 if no question is currently pending for the session.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "answers": {
+                    "type": "object",
+                    "description": "Map of question text to selected option label(s). For multi-select questions, pass an array of labels.",
+                    "additionalProperties": {
+                      "oneOf": [
+                        { "type": "string" },
+                        { "type": "array", "items": { "type": "string" } }
+                      ]
+                    }
+                  }
+                },
+                "required": ["answers"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Question answered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean", "const": true },
+                    "sessionId": { "type": "string" }
+                  },
+                  "required": ["ok", "sessionId"]
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     }
@@ -636,7 +847,7 @@
         "properties": {
           "cwd": { "type": "string" },
           "model": { "type": "string" },
-          "permissionMode": { "type": "string", "enum": ["default", "acceptEdits", "plan", "dontAsk", "auto"] },
+          "permissionMode": { "type": "string", "enum": ["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk", "auto"] },
           "settingSources": {
             "type": "array",
             "items": { "type": "string", "enum": ["user", "project", "local"] }
@@ -716,6 +927,8 @@
         "oneOf": [
           { "$ref": "#/components/schemas/SseSessionInitEvent" },
           { "$ref": "#/components/schemas/SseSessionStatusEvent" },
+          { "$ref": "#/components/schemas/SsePermissionRequestedEvent" },
+          { "$ref": "#/components/schemas/SseQuestionAskedEvent" },
           { "$ref": "#/components/schemas/SseMessageAssistantEvent" },
           { "$ref": "#/components/schemas/SseMessageDeltaEvent" },
           { "$ref": "#/components/schemas/SseResultEvent" },
@@ -766,6 +979,66 @@
               "compactError": {}
             },
             "required": ["sessionId", "uuid", "status", "permissionMode", "compactResult", "compactError"]
+          }
+        },
+        "required": ["event", "data"]
+      },
+      "SsePermissionRequestedEvent": {
+        "type": "object",
+        "description": "Emitted when the agent needs user approval to use a tool. The SSE stream pauses until POST /sessions/{sessionId}/permissions/respond is called.",
+        "properties": {
+          "event": { "type": "string", "const": "permission.requested" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sessionId": { "type": "string" },
+              "toolName": { "type": "string", "description": "Name of the tool requesting permission (e.g. Bash, Write, Edit)" },
+              "toolInput": { "type": "object", "additionalProperties": true, "description": "Parameters the tool would be called with" },
+              "toolUseId": { "type": "string", "description": "Unique identifier for this tool call within the assistant message" },
+              "blockedPath": { "type": ["string", "null"], "description": "File path that triggered the permission check, if applicable" },
+              "decisionReason": { "type": ["string", "null"], "description": "Explanation of why this permission check was triggered" }
+            },
+            "required": ["sessionId", "toolName", "toolInput", "toolUseId", "blockedPath", "decisionReason"]
+          }
+        },
+        "required": ["event", "data"]
+      },
+      "SseQuestionAskedEvent": {
+        "type": "object",
+        "description": "Emitted when Claude calls AskUserQuestion. The SSE stream pauses until POST /sessions/{sessionId}/questions/respond is called with the user's answers.",
+        "properties": {
+          "event": { "type": "string", "const": "question.asked" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sessionId": { "type": "string" },
+              "questions": {
+                "type": "array",
+                "description": "Questions Claude is asking. Each item has question, header, options (label+description), and multiSelect.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "question": { "type": "string", "description": "Full question text to display" },
+                    "header": { "type": "string", "description": "Short label (max 12 chars)" },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "label": { "type": "string" },
+                          "description": { "type": "string" },
+                          "preview": { "type": "string", "description": "Optional HTML/markdown preview (only present when toolConfig.askUserQuestion.previewFormat is set)" }
+                        },
+                        "required": ["label", "description"]
+                      }
+                    },
+                    "multiSelect": { "type": "boolean", "description": "Whether multiple options can be selected" }
+                  },
+                  "required": ["question", "header", "options", "multiSelect"]
+                }
+              }
+            },
+            "required": ["sessionId", "questions"]
           }
         },
         "required": ["event", "data"]

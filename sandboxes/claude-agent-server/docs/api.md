@@ -294,6 +294,72 @@ See [SSE events](#sse-events).
 
 ---
 
+### `POST /sessions/:sessionId/permissions/respond`
+
+Resolve a pending tool permission request after receiving a `permission.requested` SSE event.
+The SSE stream resumes immediately after this call.
+
+**Request body**
+
+```json
+{
+  "decision": "allow"
+}
+```
+
+| Field | Type | Values | Description |
+|---|---|---|---|
+| `decision` | enum | `allow`, `deny` | Whether to let the tool execute |
+
+**Response `200`**
+
+```json
+{
+  "ok": true,
+  "sessionId": "abc123",
+  "decision": "allow"
+}
+```
+
+**Errors:**  
+`404` if no permission request is currently pending for the session (already resolved or timed out).
+
+---
+
+### `POST /sessions/:sessionId/questions/respond`
+
+Answer a pending `AskUserQuestion` request after receiving a `question.asked` SSE event.
+The SSE stream resumes immediately after this call.
+
+**Request body**
+
+```json
+{
+  "answers": {
+    "How should I format the output?": "Summary",
+    "Which sections should I include?": ["Introduction", "Conclusion"]
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `answers` | object | Map of question text → selected option label. For multi-select questions, pass an array of labels. |
+
+**Response `200`**
+
+```json
+{
+  "ok": true,
+  "sessionId": "abc123"
+}
+```
+
+**Errors:**  
+`404` if no question is currently pending for the session (already resolved or timed out).
+
+---
+
 ### `POST /sessions/:sessionId/abort`
 
 Interrupt the active run for a session via `Query.interrupt()`.
@@ -555,11 +621,58 @@ A typical successful prompt run emits events in roughly this order:
 4. `task.started` *(optional)* — a sub-task (tool use) has started
 5. `task.progress` *(repeated, optional)* — sub-task progress update
 6. `task.notification` *(optional)* — sub-task completed
-7. `message.assistant` — complete assistant message
-8. `result` — final result
-9. `session.completed` — stream is finishing (added by the server, not the SDK)
+7. `permission.requested` *(optional)* — Claude needs approval before using a tool; **stream pauses**
+8. `question.asked` *(optional)* — Claude is asking a clarifying question; **stream pauses**
+9. `message.assistant` — complete assistant message
+10. `result` — final result
+11. `session.completed` — stream is finishing (added by the server, not the SDK)
 
 Unrecognized SDK messages are forwarded as `message.raw`.
+
+---
+
+## Interactive events
+
+Two SSE events cause the stream to **pause** mid-run, waiting for a client response. The session remains active and the SSE connection stays open; no new events are emitted until the client replies.
+
+### Tool permission flow (`permission.requested`)
+
+Claude needs your approval before executing a tool.
+
+```
+Server → client:  event: permission.requested
+Client → server:  POST /sessions/:sessionId/permissions/respond
+Server → client:  (stream resumes)
+```
+
+1. Receive `permission.requested` (see [event shape](#permissionrequested) below).
+2. Display the tool name, input, and optional `blockedPath` / `decisionReason` to the user.
+3. Collect the user's decision and call `POST /sessions/:sessionId/permissions/respond` with `{ "decision": "allow" | "deny" }`.
+4. The stream resumes immediately.
+
+If no response is sent within **5 minutes** the server auto-denies the request and the stream resumes with a timeout denial.
+
+### Clarifying question flow (`question.asked`)
+
+Claude has called `AskUserQuestion` to gather requirements before proceeding.
+
+```
+Server → client:  event: question.asked
+Client → server:  POST /sessions/:sessionId/questions/respond
+Server → client:  (stream resumes)
+```
+
+1. Receive `question.asked` (see [event shape](#questionasked) below).
+2. For each question in the `questions` array, render the `question` text and its `options` (label + description).
+   - If `multiSelect` is `true`, allow the user to pick multiple options.
+   - Optionally show an "Other" free-text field; use the user's typed text as the answer value instead of any option `label`.
+3. Build the `answers` map: key = `question` field, value = selected option `label` (or array of labels for multi-select).
+4. Call `POST /sessions/:sessionId/questions/respond` with `{ "answers": { ... } }`.
+5. The stream resumes with Claude's response to the answers.
+
+If no response is sent within **5 minutes** the server auto-denies and Claude receives a denial.
+
+---
 
 ### `session.init`
 
@@ -660,6 +773,80 @@ Emitted only when `includePartialMessages: true`.
   "usage": { ... }
 }
 ```
+
+### `permission.requested`
+
+Emitted when Claude wants to use a tool that requires approval. **The stream pauses until `POST /sessions/:sessionId/permissions/respond` is called.**
+
+```json
+{
+  "sessionId": "abc123",
+  "toolName": "Bash",
+  "toolInput": {
+    "command": "rm -rf /tmp/old-build",
+    "description": "Remove old build artifacts"
+  },
+  "toolUseId": "toolu_01XYZ",
+  "blockedPath": "/tmp/old-build",
+  "decisionReason": "Bash commands require approval"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `toolName` | string | Tool Claude wants to use (e.g. `Bash`, `Write`, `Edit`) |
+| `toolInput` | object | Parameters Claude will pass to the tool |
+| `toolUseId` | string | Unique identifier for this tool call in the assistant message |
+| `blockedPath` | string \| null | File path that triggered the check, if applicable |
+| `decisionReason` | string \| null | Explanation of why this check was triggered |
+
+---
+
+### `question.asked`
+
+Emitted when Claude calls `AskUserQuestion` to gather requirements. **The stream pauses until `POST /sessions/:sessionId/questions/respond` is called.**
+
+```json
+{
+  "sessionId": "abc123",
+  "questions": [
+    {
+      "question": "How should I format the output?",
+      "header": "Format",
+      "options": [
+        { "label": "Summary", "description": "Brief overview of key points" },
+        { "label": "Detailed", "description": "Full explanation with examples" }
+      ],
+      "multiSelect": false
+    },
+    {
+      "question": "Which sections should I include?",
+      "header": "Sections",
+      "options": [
+        { "label": "Introduction", "description": "Opening context" },
+        { "label": "Conclusion", "description": "Final summary" }
+      ],
+      "multiSelect": true
+    }
+  ]
+}
+```
+
+Each question object:
+
+| Field | Type | Description |
+|---|---|---|
+| `question` | string | Full question text to display to the user |
+| `header` | string | Short label (max 12 chars), suitable for a chip or tag |
+| `options` | array | 2–4 choices. Each has `label` (string) and `description` (string). May also have `preview` (HTML/markdown string) when the session was started with `toolConfig.askUserQuestion.previewFormat` set. |
+| `multiSelect` | boolean | If `true`, the user may select multiple options |
+
+The expected response `answers` object maps the `question` text to the selected option `label`:
+- Single-select: `"How should I format the output?": "Summary"`
+- Multi-select: `"Which sections should I include?": ["Introduction", "Conclusion"]`
+- Free-text: use the user's typed text directly as the value
+
+---
 
 ### `result`
 
