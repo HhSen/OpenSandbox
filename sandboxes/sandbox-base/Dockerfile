@@ -109,8 +109,8 @@ ARG ORANGEFS_URL="https://s3-gzpu-inter.didiglobal.com/gift/ofs/bin/orangefs"
 
 RUN apt-get update && apt-get install -y --no-install-recommends fuse && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code CLI
-RUN npm install -g @anthropic-ai/claude-code@2.1.110
+# install claude code binary
+RUN curl -fsSL https://claude.ai/install.sh | bash
 
 RUN if [ -n "${ORANGEFS_URL}" ]; then \
     curl -fsSL "${ORANGEFS_URL}" -o /usr/local/bin/orangefs && \
