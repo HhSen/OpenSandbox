@@ -31,7 +31,7 @@ import {
   setSessionModel,
   setSessionPermissionMode,
   updateStoredSession,
-} from '../lib/claude/session-service.js'
+} from '../lib/claude/handlers/index.js'
 import { asyncHandler, HttpError } from '../lib/http/errors.js'
 import { closeSse, openSse, requestAbortSignal, writeSseError, writeSseEvent } from '../lib/http/sse.js'
 

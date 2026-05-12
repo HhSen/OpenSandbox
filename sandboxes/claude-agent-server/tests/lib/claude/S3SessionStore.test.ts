@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { S3Client } from '@aws-sdk/client-s3'
-import { S3SessionStore } from '../../../src/lib/claude/S3SessionStore.js'
+import { S3SessionStore } from '../../../src/lib/claude/storage/session-store.js'
 
 // ---------------------------------------------------------------------------
 // Minimal in-process S3Client mock backed by a Map<Key, Body>.

@@ -4,7 +4,7 @@ import {
   patchModelBodySchema,
   patchPermissionModeBodySchema,
   setSessionPermissionMode,
-} from '../../../src/lib/claude/session-service.js'
+} from '../../../src/lib/claude/handlers/index.js'
 
 describe('patchModelBodySchema', () => {
   it('accepts a model string', () => {

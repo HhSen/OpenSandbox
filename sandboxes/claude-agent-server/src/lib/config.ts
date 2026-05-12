@@ -1,7 +1,7 @@
 
 import { z } from 'zod'
 
-import { permissionModeSchema, settingSourceSchema } from './claude/sdk-schemas.js'
+import { permissionModeSchema, settingSourceSchema } from './claude/adapters/sdk-schemas.js'
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),

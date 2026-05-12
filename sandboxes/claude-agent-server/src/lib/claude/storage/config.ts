@@ -35,9 +35,8 @@ function buildS3ConfigFromEnv(): z.infer<typeof s3ConfigSchema> | undefined {
     return undefined
   }
 
-  // Mirror the subpath used by entrypoint.sh: {USERNAME}/.claude → /root/.claude
   const username = process.env['USERNAME']
-  const prefix = username ? `${username}/.claude` : undefined
+  const prefix = username ? username : undefined
 
   return {
     type: 's3',

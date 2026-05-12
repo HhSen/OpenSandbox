@@ -1,6 +1,6 @@
 import type { Query } from '@anthropic-ai/claude-agent-sdk'
 
-import { HttpError } from '../http/errors.js'
+import { HttpError } from '../../http/errors.js'
 
 export type RuntimeStatus = 'running' | 'stopping'
 

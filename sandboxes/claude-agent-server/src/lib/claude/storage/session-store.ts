@@ -7,13 +7,15 @@ import {
   type ListObjectsV2CommandInput,
   PutObjectCommand,
   type PutObjectCommandInput,
-  type S3Client,
+  S3Client,
 } from '@aws-sdk/client-s3'
 import type {
   SessionKey,
   SessionStore,
   SessionStoreEntry,
 } from '@anthropic-ai/claude-agent-sdk'
+
+import type { StartupConfig } from './config.js'
 
 const LOAD_CONCURRENCY = 16
 
@@ -302,4 +304,28 @@ export class S3SessionStore implements SessionStore {
         !sp.split('/').some(seg => seg === '..' || seg === '.' || seg === ''),
     )
   }
+}
+
+export function buildSessionStore(cfg: StartupConfig): SessionStore | undefined {
+  const s3 = cfg.sessionStore
+  if (!s3) {
+    return undefined
+  }
+
+  const effectivePrefix = [s3.prefix, 'history']
+    .filter((s): s is string => Boolean(s))
+    .join('/')
+
+  const client = new S3Client({
+    region: s3.region,
+    ...(s3.endpoint !== undefined ? { endpoint: s3.endpoint } : {}),
+    ...(s3.forcePathStyle !== undefined ? { forcePathStyle: s3.forcePathStyle } : {}),
+    ...(s3.credentials !== undefined ? { credentials: s3.credentials } : {}),
+  })
+
+  return new S3SessionStore({
+    bucket: s3.bucket,
+    ...(effectivePrefix ? { prefix: effectivePrefix } : {}),
+    client,
+  })
 }
