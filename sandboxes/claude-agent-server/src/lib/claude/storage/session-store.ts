@@ -1,3 +1,8 @@
+import type {
+  SessionKey,
+  SessionStore,
+  SessionStoreEntry,
+} from '@anthropic-ai/claude-agent-sdk'
 import {
   DeleteObjectsCommand,
   type DeleteObjectsCommandInput,
@@ -9,11 +14,6 @@ import {
   type PutObjectCommandInput,
   S3Client,
 } from '@aws-sdk/client-s3'
-import type {
-  SessionKey,
-  SessionStore,
-  SessionStoreEntry,
-} from '@anthropic-ai/claude-agent-sdk'
 
 import type { StartupConfig } from './config.js'
 
@@ -312,10 +312,6 @@ export function buildSessionStore(cfg: StartupConfig): SessionStore | undefined 
     return undefined
   }
 
-  const effectivePrefix = [s3.prefix, 'history']
-    .filter((s): s is string => Boolean(s))
-    .join('/')
-
   const client = new S3Client({
     region: s3.region,
     ...(s3.endpoint !== undefined ? { endpoint: s3.endpoint } : {}),
@@ -325,7 +321,7 @@ export function buildSessionStore(cfg: StartupConfig): SessionStore | undefined 
 
   return new S3SessionStore({
     bucket: s3.bucket,
-    ...(effectivePrefix ? { prefix: effectivePrefix } : {}),
+    ...(s3.prefix ? { prefix: s3.prefix } : {}),
     client,
   })
 }

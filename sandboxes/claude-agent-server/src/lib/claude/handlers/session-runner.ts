@@ -9,6 +9,7 @@ import {
 
 import { config } from '../../config.js'
 import { HttpError } from '../../http/errors.js'
+import { logger } from '../../logger.js'
 import { normalizeMessage, type NormalizedEvent } from '../adapters/message-normalizer.js'
 import { runtimeRegistry } from '../adapters/runtime-registry.js'
 import { type QueryOptions } from '../adapters/sdk-schemas.js'
@@ -16,7 +17,22 @@ import { loadStartupConfig } from '../storage/config.js'
 import { buildSessionStore } from '../storage/session-store.js'
 import { permissionRegistry, questionRegistry } from './permission-handler.js'
 
-const sessionStore = buildSessionStore(loadStartupConfig())
+function initSessionStore() {
+  try {
+    const store = buildSessionStore(loadStartupConfig())
+    if (store) {
+      logger.info('session store: S3 session store initialized')
+    } else {
+      logger.info('session store: no session store configured, sessions will not be persisted to S3')
+    }
+    return store
+  } catch (err) {
+    logger.fatal({ err }, 'session store: failed to initialize — server cannot start')
+    process.exit(1)
+  }
+}
+
+const sessionStore = initSessionStore()
 
 export type ExecutePromptInput = {
   sessionId?: string

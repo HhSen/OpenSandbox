@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs'
 import { z } from 'zod'
+
+import { logger } from '../../logger.js'
 
 const s3ConfigSchema = z.object({
   type: z.literal('s3'),
@@ -22,45 +23,48 @@ const startupConfigSchema = z.object({
 
 export type StartupConfig = z.infer<typeof startupConfigSchema>
 
-// Build S3 session-store config from the same env vars used by entrypoint.sh
-// to mount OrangeFS paths. When all four required vars are present the file-based
-// config.json is skipped entirely, keeping credentials out of the image filesystem.
 function buildS3ConfigFromEnv(): z.infer<typeof s3ConfigSchema> | undefined {
   const endpoint = process.env['ORANGEFS_ENDPOINT']
   const bucket = process.env['ORANGEFS_VOLUME']
   const accessKeyId = process.env['S3_ACCESS_KEY']
   const secretAccessKey = process.env['S3_SECRET_KEY']
 
-  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) {
+  const provided = { ORANGEFS_ENDPOINT: endpoint, ORANGEFS_VOLUME: bucket, S3_ACCESS_KEY: accessKeyId, S3_SECRET_KEY: secretAccessKey }
+  const presentKeys = Object.entries(provided).filter(([, v]) => v).map(([k]) => k)
+  const missingKeys = Object.entries(provided).filter(([, v]) => !v).map(([k]) => k)
+
+  if (presentKeys.length === 0) {
     return undefined
   }
 
+  if (missingKeys.length > 0) {
+    throw new Error(`Incomplete S3 session store configuration — missing env vars: ${missingKeys.join(', ')}`)
+  }
+
   const username = process.env['USERNAME']
-  const prefix = username ? username : undefined
+  const prefix = username ? `${username}/history` : undefined
 
   return {
     type: 's3',
-    bucket,
-    endpoint,
+    bucket: bucket!,
+    endpoint: endpoint!,
     forcePathStyle: true,
     region: 'us-east-1',
     ...(prefix !== undefined ? { prefix } : {}),
-    credentials: { accessKeyId, secretAccessKey },
+    credentials: { accessKeyId: accessKeyId!, secretAccessKey: secretAccessKey! },
   }
 }
 
 export function loadStartupConfig(): StartupConfig {
-  // Env vars take precedence — no static credentials file needed at runtime.
   const envConfig = buildS3ConfigFromEnv()
   if (envConfig) {
+    logger.info(
+      { bucket: envConfig.bucket, endpoint: envConfig.endpoint, prefix: envConfig.prefix },
+      'session store: S3 config loaded from env vars',
+    )
     return { sessionStore: envConfig }
   }
 
-  // Fall back to config.json for local dev / non-OrangeFS deployments.
-  const path = process.env['CLAUDE_WRAPPER_CONFIG_FILE'] ?? './config.json'
-  if (!existsSync(path)) {
-    return {}
-  }
-  const raw: unknown = JSON.parse(readFileSync(path, 'utf8'))
-  return startupConfigSchema.parse(raw)
+  logger.info('session store: no configuration found, sessions will use local disk storage')
+  return {}
 }
