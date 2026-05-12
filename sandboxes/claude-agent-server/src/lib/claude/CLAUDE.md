@@ -19,6 +19,8 @@ src/lib/claude/
   session-service.ts     Core service: wraps SDK query(), session CRUD, introspection helpers
   runtime-registry.ts    In-memory Map<sessionId, ActiveRun>; tracks live Query handles
   message-normalizer.ts  Maps raw SDKMessage → NormalizedEvent shapes for HTTP responses
+  S3SessionStore.ts      S3-backed SessionStore (copied verbatim from SDK ref example)
+  session-store.ts       buildSessionStore() factory — constructs the SessionStore singleton
 ```
 
 ## Key Flows
@@ -59,6 +61,21 @@ src/lib/claude/
 **`sdk-schemas.ts` is a dependency leaf** — it imports only from `zod`. Any file in the project can safely import it without creating a circular dependency.
 
 **`runtime-registry.ts` singleton** — `runtimeRegistry` is module-level. All callers share the same instance. Do not create additional `RuntimeRegistry` instances.
+
+## Session Store
+
+`session-store.ts` exports `buildSessionStore(cfg: StartupConfig): SessionStore | undefined`. Called once at module load in `session-service.ts`; the result is a module-level singleton.
+
+- Returns `undefined` when no `sessionStore` key is present in `config.json` — server falls back to local-disk storage.
+- Returns an `S3SessionStore` instance when `sessionStore.type === "s3"` is configured.
+- Before constructing the store, `buildSessionStore` reads `process.env['USERNAME']` and appends it to the configured prefix: `{prefix}/{USERNAME}`. This namespaces each user's sessions independently in the bucket, replacing the per-user isolation that was previously provided by the OrangeFS `/root/.claude` mount.
+- The singleton is spread into every `query()` call: `...(sessionStore !== undefined ? { sessionStore } : {})`.
+- `sessionStore` is **not** exposed in `queryOptionsSchema` — it is a server-side concern, not a per-request API option.
+
+`S3SessionStore.ts` is a verbatim copy of `ref/claude-agent-sdk/examples/session-stores/s3/src/S3SessionStore.ts`. Do not edit it independently — re-copy if the reference changes. It stores one NDJSON part file per `append()` call under the key layout:
+```
+{prefix}{projectKey}/{sessionId}/part-{epochMs13}-{rand6}.jsonl
+```
 
 ## Working Notes
 

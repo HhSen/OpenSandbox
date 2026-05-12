@@ -902,6 +902,60 @@ The stream closes immediately after.
 | `CLAUDE_WRAPPER_DEFAULT_PERMISSION_MODE` | `default` | Default permission mode (`default`, `acceptEdits`, `plan`, `dontAsk`, `auto`) |
 | `CLAUDE_WRAPPER_DEFAULT_SETTING_SOURCES` | `project,user,local` | Comma-separated list of Claude config sources to load |
 | `CLAUDE_WRAPPER_REQUIRE_AUTH_TOKEN` | *(unset)* | When set, require `Authorization: Bearer <token>` on all requests |
+| `CLAUDE_WRAPPER_CONFIG_FILE` | `./config.json` | Override path to the startup config file (see [Config file](#config-file)) |
+| `USERNAME` | *(unset)* | When set, appended to the S3 prefix to namespace sessions per user: `{prefix}/{USERNAME}/…` |
+
+---
+
+## Config file
+
+The server optionally reads a `config.json` file at startup for infrastructure-level settings (e.g. session store). The file is Zod-validated; a malformed present file is a hard startup error. An absent file or missing `sessionStore` key is silently ignored — the server starts with local-disk session storage.
+
+### Session store — S3 / S3-compatible
+
+```jsonc
+{
+  "sessionStore": {
+    "type": "s3",
+    "bucket": "my-claude-sessions",       // required
+    "prefix": "transcripts",              // optional, default ""
+    "region": "us-east-1",               // optional, default "us-east-1"
+    "endpoint": "http://localhost:9000",  // optional — for MinIO / S3-compatible stores
+    "forcePathStyle": true,              // optional — required for most S3-compatible endpoints
+    "credentials": {                     // optional — omit to use SDK credential chain (IAM/~/.aws)
+      "accessKeyId": "...",
+      "secretAccessKey": "..."
+    }
+  }
+}
+```
+
+**IAM actions required:** `s3:PutObject`, `s3:GetObject`, `s3:ListBucket`, `s3:DeleteObject` on the bucket and its contents.
+
+**Key layout:** `{prefix}/{USERNAME}/{projectKey}/{sessionId}/part-{epochMs13}-{rand6}.jsonl` — `USERNAME` is injected automatically from the env var; subagent transcripts go one level deeper under `{sessionId}/{subpath}/`.
+
+**Local testing with MinIO:**
+
+```bash
+docker run -d -p 9000:9000 minio/minio server /data
+# create bucket
+docker run --rm --network host minio/mc \
+  sh -c 'mc alias set local http://localhost:9000 minioadmin minioadmin && mc mb local/test'
+
+cat > config.json <<'EOF'
+{
+  "sessionStore": {
+    "type": "s3",
+    "bucket": "test",
+    "endpoint": "http://localhost:9000",
+    "forcePathStyle": true,
+    "credentials": { "accessKeyId": "minioadmin", "secretAccessKey": "minioadmin" }
+  }
+}
+EOF
+
+npm run dev
+```
 
 ---
 

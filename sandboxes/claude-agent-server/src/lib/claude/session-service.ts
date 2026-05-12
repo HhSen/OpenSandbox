@@ -18,12 +18,16 @@ import {
 import { z } from 'zod'
 
 import { config } from '../config.js'
+import { loadStartupConfig } from '../startup-config.js'
 import { HttpError } from '../http/errors.js'
 import { normalizeMessage, type NormalizedEvent } from './message-normalizer.js'
 import { permissionRegistry } from './permission-registry.js'
 import { questionRegistry } from './question-registry.js'
 import { runtimeRegistry } from './runtime-registry.js'
 import { permissionModeSchema, queryOptionsSchema, type QueryOptions } from './sdk-schemas.js'
+import { buildSessionStore } from './session-store.js'
+
+const sessionStore = buildSessionStore(loadStartupConfig())
 export type { QueryOptions } from './sdk-schemas.js'
 
 export const listSessionsQuerySchema = z.object({
@@ -225,6 +229,7 @@ export async function execute(
     prompt: input.prompt,
     options: {
       ...buildOptions(input),
+      ...(sessionStore !== undefined ? { sessionStore } : {}),
       canUseTool: async (toolName, toolInput, options) => {
         const sid = discoveredSessionId ?? input.sessionId ?? 'unknown'
 
