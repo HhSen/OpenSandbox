@@ -97,10 +97,14 @@ ENV PYTHON_VERSION=3.14 \
 # --- Stage 4: Final sandbox image (code-interpreter + HTTP server) ---
 FROM code-interpreter AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends fuse && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends fuse musl && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://s3-gzpu-inter.didiglobal.com/gift/ofs/bin/orangefs -o /usr/local/bin/orangefs
-RUN chmod +x /usr/local/bin/orangefs;
+ARG ORANGEFS_URL="https://s3-gzpu-inter.didiglobal.com/gift/ofs/bin/orangefs"
+
+RUN if [ -n "${ORANGEFS_URL}" ]; then \
+    curl -fsSL "${ORANGEFS_URL}" -o /usr/local/bin/orangefs && \
+    chmod +x /usr/local/bin/orangefs; \
+    fi
 
 # Copy the compiled server, static assets, and production dependencies from the builder
 COPY --from=server-builder /app/dist /app/dist
