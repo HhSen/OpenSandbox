@@ -1,3 +1,4 @@
+
 import { z } from 'zod'
 
 import { permissionModeSchema, settingSourceSchema } from './claude/sdk-schemas.js'
@@ -5,7 +6,7 @@ import { permissionModeSchema, settingSourceSchema } from './claude/sdk-schemas.
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().default('0.0.0.0'),
-  CLAUDE_WRAPPER_DEFAULT_MODEL: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().optional(),
   CLAUDE_WRAPPER_DEFAULT_PERMISSION_MODE: permissionModeSchema.default('default'),
   CLAUDE_WRAPPER_DEFAULT_SETTING_SOURCES: z
     .string()
@@ -21,7 +22,7 @@ const parsed = envSchema.parse(process.env)
 export const config = {
   host: parsed.HOST,
   port: parsed.PORT,
-  defaultModel: parsed.CLAUDE_WRAPPER_DEFAULT_MODEL,
+  defaultModel: parsed.ANTHROPIC_MODEL,
   defaultPermissionMode: parsed.CLAUDE_WRAPPER_DEFAULT_PERMISSION_MODE,
   defaultSettingSources: parsed.CLAUDE_WRAPPER_DEFAULT_SETTING_SOURCES,
   authToken: parsed.CLAUDE_WRAPPER_REQUIRE_AUTH_TOKEN,

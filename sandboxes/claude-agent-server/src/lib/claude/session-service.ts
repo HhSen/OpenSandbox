@@ -18,8 +18,8 @@ import {
 import { z } from 'zod'
 
 import { config } from '../config.js'
-import { loadStartupConfig } from '../startup-config.js'
 import { HttpError } from '../http/errors.js'
+import { loadStartupConfig } from '../startup-config.js'
 import { normalizeMessage, type NormalizedEvent } from './message-normalizer.js'
 import { permissionRegistry } from './permission-registry.js'
 import { questionRegistry } from './question-registry.js'

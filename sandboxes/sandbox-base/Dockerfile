@@ -1,9 +1,3 @@
-# SPDX-FileCopyrightText: 2025 Weibo, Inc.
-#
-# SPDX-License-Identifier: Apache-2.0
-
-# Build context: repo root
-
 # --- Stage 1: Build the HTTP server ---
 FROM node:20-slim AS server-builder
 
@@ -103,19 +97,10 @@ ENV PYTHON_VERSION=3.14 \
 # --- Stage 4: Final sandbox image (code-interpreter + HTTP server) ---
 FROM code-interpreter AS runtime
 
-# ARG ORANGEFS_URL: set to the orangefs binary download URL to include shared-workspace support.
-# Leave empty (default) to skip — the entrypoint handles a missing binary gracefully.
-ARG ORANGEFS_URL="https://s3-gzpu-inter.didiglobal.com/gift/ofs/bin/orangefs"
-
 RUN apt-get update && apt-get install -y --no-install-recommends fuse && rm -rf /var/lib/apt/lists/*
 
-# install claude code binary
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
-RUN if [ -n "${ORANGEFS_URL}" ]; then \
-    curl -fsSL "${ORANGEFS_URL}" -o /usr/local/bin/orangefs && \
-    chmod +x /usr/local/bin/orangefs; \
-    fi
+RUN curl -fsSL https://s3-gzpu-inter.didiglobal.com/gift/ofs/bin/orangefs -o /usr/local/bin/orangefs
+RUN chmod +x /usr/local/bin/orangefs;
 
 # Copy the compiled server, static assets, and production dependencies from the builder
 COPY --from=server-builder /app/dist /app/dist

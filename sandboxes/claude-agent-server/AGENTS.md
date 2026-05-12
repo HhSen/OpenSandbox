@@ -77,8 +77,21 @@ If the file is absent or has no `sessionStore` key, the server starts normally w
 
 | Variable | Purpose |
 |---|---|
-| `USERNAME` | Appended to the configured S3 prefix, e.g. `transcripts/{USERNAME}/…`, so each user's sessions are namespaced independently in the bucket |
-| `CLAUDE_WRAPPER_CONFIG_FILE` | Override path to `config.json` |
+| `ANTHROPIC_MODEL` | Default model for all sessions (short alias; `CLAUDE_WRAPPER_DEFAULT_MODEL` takes precedence if both are set) |
+| `CLAUDE_WRAPPER_DEFAULT_MODEL` | Default model for all sessions (overrides `ANTHROPIC_MODEL`) |
+| `CLAUDE_WRAPPER_DEFAULT_PERMISSION_MODE` | Default permission mode (`default`, `acceptEdits`, `autoEdit`, `bypassPermissions`) — default: `default` |
+| `CLAUDE_WRAPPER_DEFAULT_SETTING_SOURCES` | Comma-separated setting sources — default: `project,user,local` |
+| `CLAUDE_WRAPPER_REQUIRE_AUTH_TOKEN` | If set, all requests must supply this token as a Bearer token |
+| `CLAUDE_CODE_EXECUTABLE` | Absolute path to the `claude` binary. Required when Claude Code is installed via the native installer and the SDK cannot find a bundled binary via npm optional dependencies |
+| `PORT` | HTTP listen port — default: `3000` |
+| `HOST` | HTTP listen host — default: `0.0.0.0` |
+| `LOG_LEVEL` | Pino log level (`trace`, `debug`, `info`, `warn`, `error`, `fatal`) — default: `info` |
+| `USERNAME` | Appended to the S3 prefix as `{USERNAME}/.claude` to namespace sessions per user |
+| `ORANGEFS_ENDPOINT` | S3-compatible endpoint URL for the session store (e.g. OrangeFS / MinIO) |
+| `ORANGEFS_VOLUME` | S3 bucket name for the session store |
+| `S3_ACCESS_KEY` | S3 access key ID |
+| `S3_SECRET_KEY` | S3 secret access key |
+| `CLAUDE_WRAPPER_CONFIG_FILE` | Override path to `config.json` (default: `./config.json`) |
 
 ## COMMANDS
 ```bash
