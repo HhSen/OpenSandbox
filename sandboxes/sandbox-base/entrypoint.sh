@@ -24,7 +24,7 @@ if [ -x /usr/local/bin/orangefs ] && [ -n "${USERNAME:-}" ]; then
         --rs-addr="${ORANGEFS_RS_ADDR:-}" \
         --token="${ORANGEFS_TOKEN:-}" \
         --volume-name="${ORANGEFS_VOLUME:-}" \
-        --subpath="${USERNAME}/${TASK_ID}" \
+        --subpath="${USERNAME}/workspaces/${TASK_ID}" \
         --mount-point="${WORKSPACE_TASK_DIR}" > /tmp/orangefs.log 2>&1 &
       _ws_pid=$!
 

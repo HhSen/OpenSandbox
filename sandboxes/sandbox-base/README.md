@@ -38,12 +38,15 @@ OrangeFS volume/
       history.jsonl                 ← command history
       hooks/                        ← hook scripts
       projects/                     ← conversation histories (all tasks)
-    {TASK_ID}/                      ← task-specific workspace
-      <your files>
+    workspaces/
+      {TASK_ID}/                    ← task-specific workspace
+        <your files>
+    history/                        ← session transcripts (S3 API)
+    resources/                      ← user-created skills/MCP (S3 API)
 
 Container mounts:
-  /root/.claude/                    ← OrangeFS: {USERNAME}/.claude/   (global, shared)
-  /workspace/{USERNAME}/{TASK_ID}/  ← OrangeFS: {USERNAME}/{TASK_ID}/ (task-specific)
+  /root/.claude/                    ← OrangeFS: {USERNAME}/.claude/             (global, shared)
+  /workspace/{USERNAME}/{TASK_ID}/  ← OrangeFS: {USERNAME}/workspaces/{TASK_ID} (task-specific)
   /root/.claude.json                ← bootstrapped from ANTHROPIC_API_KEY (not persisted)
 ```
 
