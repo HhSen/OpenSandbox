@@ -4,15 +4,17 @@ import {
   type Options,
   type PermissionMode,
   type SDKResultMessage,
+  type SDKUserMessage,
   type SettingSource,
 } from '@anthropic-ai/claude-agent-sdk'
+import type { MessageParam } from '@anthropic-ai/sdk/resources'
 
 import { config } from '../../config.js'
 import { HttpError } from '../../http/errors.js'
 import { logger } from '../../logger.js'
 import { normalizeMessage, type NormalizedEvent } from '../adapters/message-normalizer.js'
 import { runtimeRegistry } from '../adapters/runtime-registry.js'
-import { type QueryOptions } from '../adapters/sdk-schemas.js'
+import { type PromptContent, type QueryOptions } from '../adapters/schemas.js'
 import { loadStartupConfig } from '../storage/config.js'
 import { buildSessionStore } from '../storage/session-store.js'
 import { permissionRegistry, questionRegistry } from './permission-handler.js'
@@ -36,7 +38,7 @@ const sessionStore = initSessionStore()
 
 export type ExecutePromptInput = {
   sessionId?: string
-  prompt: string
+  prompt: PromptContent
   includePartialMessages?: boolean
   forkSession?: boolean
   options?: QueryOptions
@@ -91,6 +93,21 @@ function buildOptions(input: ExecutePromptInput): Options {
   }) as Options
 }
 
+function toMessageParam(prompt: PromptContent): MessageParam {
+  return {
+    role: 'user',
+    content: typeof prompt === 'string' ? prompt : (prompt as MessageParam['content']),
+  }
+}
+
+async function* promptToStream(prompt: PromptContent): AsyncGenerator<SDKUserMessage> {
+  yield {
+    type: 'user',
+    message: toMessageParam(prompt),
+    parent_tool_use_id: null,
+  }
+}
+
 export async function abortSession(sessionId: string) {
   const activeRun = runtimeRegistry.get(sessionId)
 
@@ -123,7 +140,7 @@ export async function execute(
   }
 
   const queryHandle = query({
-    prompt: input.prompt,
+    prompt: promptToStream(input.prompt),
     options: {
       ...buildOptions(input),
       ...(sessionStore !== undefined ? { sessionStore } : {}),
@@ -238,4 +255,26 @@ export async function execute(
     result: finalResult,
     events,
   }
+}
+
+export async function streamMessageToSession(
+  sessionId: string,
+  prompt: PromptContent,
+  priority?: 'now' | 'next' | 'later',
+): Promise<void> {
+  const queryHandle = runtimeRegistry.getQuery(sessionId)
+  if (!queryHandle) {
+    throw new HttpError(409, `Session ${sessionId} has no active run to stream into`)
+  }
+
+  const msg: SDKUserMessage = {
+    type: 'user',
+    message: toMessageParam(prompt),
+    parent_tool_use_id: null,
+    ...(priority !== undefined ? { priority } : {}),
+  }
+
+  await queryHandle.streamInput(
+    (async function* () { yield msg })(),
+  )
 }

@@ -26,7 +26,7 @@ src/routes/
 | GET | `/sessions/:sessionId` | Get session info + runtime status |
 | PATCH | `/sessions/:sessionId` | Rename or tag a session |
 | GET | `/sessions/:sessionId/messages` | Get stored messages |
-| POST | `/sessions/:sessionId/messages` | Send message to existing session (batch or SSE) |
+| POST | `/sessions/:sessionId/messages` | Send message to existing session. Active run → 202 (injected via streamInput). Idle → batch or SSE. |
 | POST | `/sessions/:sessionId/abort` | Abort an active run |
 | POST | `/sessions/:sessionId/fork` | Fork a session |
 | POST | `/sessions/:sessionId/rewind` | Roll back file changes (requires checkpointing) |
@@ -66,10 +66,11 @@ Endpoints that return `501 Not Implemented`: `GET /sessions/:sessionId/subagents
 ## Working Notes
 
 - `sessionIdParam()` extracts and validates `:sessionId` from `req.params`. It throws (not returns null) so callers don't need a null check.
-- `promptInput()` assembles `ExecutePromptInput` from the parsed body, applying only defined optional fields to avoid violating `exactOptionalPropertyTypes`.
+- `promptInput()` assembles `ExecutePromptInput` from the parsed body, applying only defined optional fields to avoid violating `exactOptionalPropertyTypes`. `value.prompt` is `PromptContent` (string or content block array).
 - `session.completed` is the terminal SSE event for streaming prompts. Consumers should watch for it to know when the stream is done.
 - Introspection endpoints (`/commands`, `/models`, `/agents`, `/context`) all require an active SDK run. They return `409` if the session is idle and `404` if it does not exist — this comes from `requireActiveQuery()` in `session-service.ts`.
 - All handlers use `asyncHandler` from `src/lib/http/errors.ts` — do not use raw async route handlers.
+- `POST /sessions/:sessionId/messages` has two code paths: (1) active run detected via `runtimeRegistry.get()` → call `streamMessageToSession()` → return `202`; (2) no active run → start a new query turn as before. The `priority` field is only meaningful for path (1).
 
 ## Scan Snapshot
 

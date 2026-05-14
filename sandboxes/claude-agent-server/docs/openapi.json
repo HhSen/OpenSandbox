@@ -226,7 +226,8 @@
       },
       "post": {
         "operationId": "sessions.messages.create",
-        "summary": "Send a prompt to an existing session",
+        "summary": "Send a prompt or inject a message into an active session",
+        "description": "When the session is idle, starts a new query turn (batch or SSE). When the session has an active run, injects the message via streamInput and returns 202 — the agent's response events flow through the original SSE stream.",
         "parameters": [
           {
             "in": "path",
@@ -252,6 +253,14 @@
               },
               "text/event-stream": {
                 "schema": { "$ref": "#/components/schemas/SseEvent" }
+              }
+            }
+          },
+          "202": {
+            "description": "Message injected into active run — response events flow through the original SSE stream",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamedMessageResponse" }
               }
             }
           }
@@ -874,10 +883,77 @@
           "enableFileCheckpointing": { "type": "boolean", "description": "Snapshot files before each tool execution, enabling POST /sessions/:id/rewind" }
         }
       },
+      "TextBlockParam": {
+        "type": "object",
+        "description": "A plain-text content block in a user message",
+        "properties": {
+          "type": { "type": "string", "const": "text" },
+          "text": { "type": "string", "minLength": 1 }
+        },
+        "required": ["type", "text"]
+      },
+      "ImageBlockParam": {
+        "type": "object",
+        "description": "An image content block in a user message. Use base64 for inline data or url for remote images.",
+        "properties": {
+          "type": { "type": "string", "const": "image" },
+          "source": {
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "Base64-encoded image data",
+                "properties": {
+                  "type": { "type": "string", "const": "base64" },
+                  "media_type": { "type": "string", "enum": ["image/jpeg", "image/png", "image/gif", "image/webp"] },
+                  "data": { "type": "string", "description": "Base64-encoded image bytes" }
+                },
+                "required": ["type", "media_type", "data"]
+              },
+              {
+                "type": "object",
+                "description": "Remote image URL",
+                "properties": {
+                  "type": { "type": "string", "const": "url" },
+                  "url": { "type": "string", "format": "uri" }
+                },
+                "required": ["type", "url"]
+              }
+            ]
+          }
+        },
+        "required": ["type", "source"]
+      },
+      "ContentBlockParam": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/TextBlockParam" },
+          { "$ref": "#/components/schemas/ImageBlockParam" }
+        ],
+        "discriminator": { "propertyName": "type" }
+      },
+      "PromptContent": {
+        "oneOf": [
+          { "type": "string", "minLength": 1, "description": "Plain text message" },
+          {
+            "type": "array",
+            "description": "Structured message with text and/or image blocks",
+            "items": { "$ref": "#/components/schemas/ContentBlockParam" },
+            "minItems": 1
+          }
+        ]
+      },
+      "StreamedMessageResponse": {
+        "type": "object",
+        "description": "Returned when a message is injected into an active streaming session via streamInput. The agent's response flows through the original SSE stream.",
+        "properties": {
+          "streamed": { "type": "boolean", "const": true },
+          "sessionId": { "type": "string" }
+        },
+        "required": ["streamed", "sessionId"]
+      },
       "CreateSessionRequest": {
         "type": "object",
         "properties": {
-          "prompt": { "type": "string" },
+          "prompt": { "$ref": "#/components/schemas/PromptContent" },
           "stream": { "type": "boolean" },
           "includePartialMessages": { "type": "boolean" },
           "options": { "$ref": "#/components/schemas/QueryOptions" }
@@ -887,10 +963,11 @@
       "SendMessageRequest": {
         "type": "object",
         "properties": {
-          "prompt": { "type": "string" },
+          "prompt": { "$ref": "#/components/schemas/PromptContent" },
           "stream": { "type": "boolean" },
           "includePartialMessages": { "type": "boolean" },
           "forkSession": { "type": "boolean" },
+          "priority": { "type": "string", "enum": ["now", "next", "later"], "description": "Message delivery priority when injecting into an active run. 'now' interrupts current work, 'next' queues after current turn, 'later' queues at the end." },
           "options": { "$ref": "#/components/schemas/QueryOptions" }
         },
         "required": ["prompt"]

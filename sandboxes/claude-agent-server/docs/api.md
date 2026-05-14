@@ -1,7 +1,6 @@
 # claude-agent-server — API reference
 
-Thin HTTP wrapper around the `@anthropic-ai/claude-agent-sdk` stable API.  
-Claude Code / the SDK remain the source of truth for session history and behavior.
+HTTP server wrapping the `@anthropic-ai/claude-agent-sdk`. All prompts use the SDK's **streaming input mode** — messages are delivered as async iterables, which enables rich content (images), live message injection into active runs, and priority-based queueing.
 
 ---
 
@@ -128,7 +127,7 @@ assigned by the SDK and returned in the response.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `prompt` | string | yes | First user message |
+| `prompt` | string or [content block array](#message-content) | yes | First user message. Plain string or a structured array of text and image blocks. |
 | `stream` | boolean | no | Return SSE stream instead of a batch response |
 | `includePartialMessages` | boolean | no | Include in-progress assistant messages in the stream |
 | `options` | object | no | Per-request SDK options (see [Query options](#query-options)) |
@@ -252,7 +251,12 @@ Fetch the raw message log for a session from the SDK store.
 
 ### `POST /sessions/:sessionId/messages`
 
-Send a follow-up prompt to an existing session.
+Send a follow-up message to an existing session.
+
+**Behavior depends on whether the session has an active run:**
+
+- **Idle session** — starts a new query turn. Returns the result as JSON (`200`) or an SSE stream (`200`).
+- **Active run** — injects the message into the running query via `streamInput`. Returns `202 { streamed: true }` immediately. The agent's response events flow through the **original** SSE stream that started the run — no new stream is opened.
 
 **Request body**
 
@@ -262,19 +266,30 @@ Send a follow-up prompt to an existing session.
   "stream": false,
   "includePartialMessages": false,
   "forkSession": false,
+  "priority": "next",
   "options": { }
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `prompt` | string | yes | Follow-up user message |
-| `stream` | boolean | no | Return SSE stream |
+| `prompt` | string or [content block array](#message-content) | yes | Follow-up message. Plain string or structured array of text and image blocks. |
+| `stream` | boolean | no | Return SSE stream (idle sessions only) |
 | `includePartialMessages` | boolean | no | Include partial assistant messages in stream |
-| `forkSession` | boolean | no | Fork the session before sending (creates a new session ID) |
+| `forkSession` | boolean | no | Fork the session before sending (idle sessions only — creates a new session ID) |
+| `priority` | `"now"` \| `"next"` \| `"later"` | no | Delivery priority when injecting into an active run. `"now"` interrupts current work; `"next"` queues after the current turn; `"later"` queues at the end. Default: SDK decides. |
 | `options` | object | no | Per-request SDK options (see [Query options](#query-options)) |
 
-**Response `200`** (non-stream)
+**Response `202`** (active run — message injected)
+
+```json
+{
+  "streamed": true,
+  "sessionId": "abc123"
+}
+```
+
+**Response `200`** (idle session, non-stream)
 
 ```json
 {
@@ -284,13 +299,12 @@ Send a follow-up prompt to an existing session.
 }
 ```
 
-**Response `200`** (stream)  
+**Response `200`** (idle session, stream)  
 Content-Type: `text/event-stream`  
 See [SSE events](#sse-events).
 
 **Errors:**  
-`404` if the session does not exist;  
-`409` if the session already has an active run (and `forkSession` is not set).
+`404` if the session does not exist.
 
 ---
 
@@ -402,6 +416,45 @@ The original session is not modified.
 | `dir` | string | Claude data directory override |
 
 **Response `201`** — same shape as `GET /sessions/:sessionId`.
+
+---
+
+## Message content
+
+The `prompt` field on `POST /sessions` and `POST /sessions/:sessionId/messages` accepts either a plain string or a structured array of content blocks.
+
+### Plain text
+
+```json
+{ "prompt": "Explain this codebase" }
+```
+
+### Content blocks
+
+Pass an array with any combination of `text` and `image` blocks:
+
+```json
+{
+  "prompt": [
+    { "type": "text", "text": "What does this diagram show?" },
+    {
+      "type": "image",
+      "source": {
+        "type": "base64",
+        "media_type": "image/png",
+        "data": "<base64-encoded bytes>"
+      }
+    }
+  ]
+}
+```
+
+**Image source types:**
+
+| Source type | Fields | Description |
+|---|---|---|
+| `base64` | `media_type`, `data` | Inline image. `media_type` must be `image/jpeg`, `image/png`, `image/gif`, or `image/webp`. `data` is the base64-encoded bytes. |
+| `url` | `url` | Remote image URL. |
 
 ---
 
@@ -970,12 +1023,6 @@ A `Dockerfile` and `docker-compose.yml` are needed to:
 - copy and build the server
 - expose the port
 - set a default `ANTHROPIC_API_KEY` mount or env
-
-### Test suite
-No automated tests exist yet. Recommended:
-- **Unit tests** for `message-normalizer.ts` (pure function, easy to test)
-- **Integration tests** for each route using a mocked SDK `query`
-- Test framework: `vitest` (ESM-native, no config overhead)
 
 ### Dedicated SSE-only event stream endpoint
 Currently SSE is opt-in per prompt (`"stream": true`).  

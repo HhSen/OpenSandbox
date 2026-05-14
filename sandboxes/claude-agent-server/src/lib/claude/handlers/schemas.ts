@@ -1,9 +1,9 @@
 import type { SDKSessionInfo, SessionMessage } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 
-import { permissionModeSchema, queryOptionsSchema } from '../adapters/sdk-schemas.js'
+import { permissionModeSchema, promptContentSchema, queryOptionsSchema } from '../adapters/schemas.js'
 
-export type { QueryOptions } from '../adapters/sdk-schemas.js'
+export type { PromptContent, QueryOptions } from '../adapters/schemas.js'
 
 export const listSessionsQuerySchema = z.object({
   dir: z.string().optional(),
@@ -44,7 +44,7 @@ export const patchPermissionModeBodySchema = z.object({
 })
 
 const promptBodyBaseSchema = z.object({
-  prompt: z.string().min(1),
+  prompt: promptContentSchema,
   stream: z.boolean().optional(),
   includePartialMessages: z.boolean().optional(),
   options: queryOptionsSchema.optional(),
@@ -54,6 +54,7 @@ export const createSessionBodySchema = promptBodyBaseSchema
 
 export const sendMessageBodySchema = promptBodyBaseSchema.extend({
   forkSession: z.boolean().optional(),
+  priority: z.enum(['now', 'next', 'later']).optional(),
 })
 
 export const rewindSessionBodySchema = z.object({

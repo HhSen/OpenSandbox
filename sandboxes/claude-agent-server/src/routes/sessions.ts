@@ -30,8 +30,10 @@ import {
   sessionMessageToResponse,
   setSessionModel,
   setSessionPermissionMode,
+  streamMessageToSession,
   updateStoredSession,
 } from '../lib/claude/handlers/index.js'
+import { runtimeRegistry } from '../lib/claude/adapters/runtime-registry.js'
 import { asyncHandler, HttpError } from '../lib/http/errors.js'
 import { closeSse, openSse, requestAbortSignal, writeSseError, writeSseEvent } from '../lib/http/sse.js'
 
@@ -47,7 +49,7 @@ function sessionIdParam(value: string | string[] | undefined) {
 
 function promptInput(
   value: {
-    prompt: string
+    prompt: ExecutePromptInput['prompt']
     includePartialMessages?: boolean | undefined
     options?: ExecutePromptInput['options']
   },
@@ -161,6 +163,13 @@ sessionsRouter.post(
   asyncHandler(async (req, res) => {
     const input = sendMessageBodySchema.parse(req.body)
     const sessionId = sessionIdParam(req.params.sessionId)
+
+    // If there's an active run, inject the message via streamInput instead of starting a new query
+    if (runtimeRegistry.get(sessionId)) {
+      await streamMessageToSession(sessionId, input.prompt, input.priority)
+      res.status(202).json({ streamed: true, sessionId })
+      return
+    }
 
     if (input.stream) {
       openSse(res)

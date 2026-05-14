@@ -29,12 +29,21 @@ src/lib/claude/
 
 1. Route handler calls `execute(input, onEvent?)` in `session-service.ts`
 2. `buildOptions()` merges per-request options with server defaults from `config.ts`; rejects `bypassPermissions`
-3. `query({ prompt, options })` returns a `Query` async iterable from the SDK
-4. If `input.sessionId` is known up front, `runtimeRegistry.start()` is called immediately
-5. On first message containing `session_id`, `runtimeRegistry.ensureStarted()` registers the session
-6. Each message is passed to `normalizeMessage()` and emitted via `onEvent?.()`
-7. After the loop, `runtimeRegistry.finish()` clears the entry; `queryHandle.close()` tears down the SDK handle
-8. Returns `{ sessionId, result, events }`
+3. `promptToStream(input.prompt)` wraps the prompt (string or `ContentBlockParam[]`) in a single-yield async generator, enabling streaming input mode
+4. `query({ prompt: asyncGenerator, options })` returns a `Query` async iterable from the SDK
+5. If `input.sessionId` is known up front, `runtimeRegistry.start()` is called immediately
+6. On first message containing `session_id`, `runtimeRegistry.ensureStarted()` registers the session
+7. Each message is passed to `normalizeMessage()` and emitted via `onEvent?.()`
+8. After the loop, `runtimeRegistry.finish()` clears the entry; `queryHandle.close()` tears down the SDK handle
+9. Returns `{ sessionId, result, events }`
+
+### 1b. Inject a message into an active run
+
+1. Route handler calls `streamMessageToSession(sessionId, prompt, priority?)` 
+2. Retrieves the live `Query` handle from `runtimeRegistry.getQuery()`
+3. Builds an `SDKUserMessage` from the prompt content, with optional `priority: 'now' | 'next' | 'later'`
+4. Calls `queryHandle.streamInput(singleMessageIterable)` — the SDK delivers it to the running agent
+5. Events from the agent's response flow through the original SSE stream that called `execute()`
 
 ### 2. Active-query introspection (rewind, commands, models, agents, context)
 
@@ -52,11 +61,12 @@ src/lib/claude/
 ## Interfaces and Dependencies
 
 **Exports from `session-service.ts`** (used by `src/routes/sessions.ts`):
-- `execute`, `listStoredSessions`, `getStoredSession`, `getStoredMessages`
+- `execute`, `streamMessageToSession`, `listStoredSessions`, `getStoredSession`, `getStoredMessages`
 - `updateStoredSession`, `forkStoredSession`, `abortSession`
 - `rewindSessionFiles`, `getSessionCommands`, `getSessionModels`, `getSessionAgents`, `getSessionContext`
 - Zod schemas: `createSessionBodySchema`, `sendMessageBodySchema`, `patchSessionBodySchema`, etc.
 - Serializers: `sdkSessionInfoToResponse`, `sessionMessageToResponse`
+- Types: `PromptContent`, `ContentBlockParam` (re-exported from `sdk-schemas.ts`)
 
 **`sdk-schemas.ts` is a dependency leaf** — it imports only from `zod`. Any file in the project can safely import it without creating a circular dependency.
 
@@ -84,6 +94,8 @@ src/lib/claude/
 - `forkSession` in `execute()`: if `input.forkSession` is true and `input.sessionId` is provided, the SDK creates a new session branched from that one. The original session is unchanged.
 - The `stopping` state guard in `requireActiveQuery` prevents `rewindFiles` from racing with SDK teardown and leaving the working tree in an inconsistent state.
 - New message types added to the SDK will fall through to the `message.raw` fallback in `normalizeMessage`. They won't break the server but will appear as raw events in responses.
+- All prompts use **streaming input mode** (`prompt: AsyncIterable<SDKUserMessage>`). The `promptToStream()` helper wraps any `PromptContent` value in a single-yield generator — this is why image content blocks work even on the first message.
+- `streamMessageToSession()` is the only path that uses `Query.streamInput()`. It must only be called while the session's query is still running; the route layer enforces this by checking `runtimeRegistry.get(sessionId)` before calling it.
 
 ## Tests
 

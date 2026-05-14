@@ -56,3 +56,41 @@ export const queryOptionsSchema = z.object({
 })
 
 export type QueryOptions = z.infer<typeof queryOptionsSchema>
+
+// ---------------------------------------------------------------------------
+// Content block schemas — mirror SDK's ContentBlockParam types
+// ---------------------------------------------------------------------------
+
+export const textBlockParamSchema = z.object({
+  type: z.literal('text'),
+  text: z.string().min(1),
+})
+
+const base64ImageSourceSchema = z.object({
+  type: z.literal('base64'),
+  media_type: z.enum(['image/jpeg', 'image/png', 'image/gif', 'image/webp']),
+  data: z.string().min(1),
+})
+const urlImageSourceSchema = z.object({
+  type: z.literal('url'),
+  url: z.string().url(),
+})
+export const imageBlockParamSchema = z.object({
+  type: z.literal('image'),
+  source: z.union([base64ImageSourceSchema, urlImageSourceSchema]),
+})
+
+// Union of all supported content blocks
+export const contentBlockParamSchema = z.discriminatedUnion('type', [
+  textBlockParamSchema,
+  imageBlockParamSchema,
+])
+
+// prompt can be plain text or an array of content blocks
+export const promptContentSchema = z.union([
+  z.string().min(1),
+  z.array(contentBlockParamSchema).min(1),
+])
+
+export type PromptContent = z.infer<typeof promptContentSchema>
+export type ContentBlockParam = z.infer<typeof contentBlockParamSchema>
