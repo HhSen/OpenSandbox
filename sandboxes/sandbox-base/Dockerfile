@@ -40,6 +40,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg lsb-release \
     && rm -rf /var/lib/apt/lists/*
 
+# 1a. Compile arc4random fallback shim.
+# Ubuntu 24.04 glibc 2.39 calls getrandom(GRND_NONBLOCK) inside arc4random_buf and
+# aborts fatally when that syscall is blocked by the container's seccomp profile.
+# This LD_PRELOAD override replaces arc4random_buf/arc4random/getentropy with
+# /dev/urandom reads so programs like ssh don't crash in restricted environments.
+COPY sandboxes/sandbox-base/arc4random-fallback.c /tmp/arc4random-fallback.c
+RUN gcc -shared -fPIC -O2 -o /usr/lib/arc4random-fallback.so /tmp/arc4random-fallback.c \
+    && rm /tmp/arc4random-fallback.c \
+    && echo /usr/lib/arc4random-fallback.so >> /etc/ld.so.preload
+
 # 2. Install uv and Python (3.10 - 3.14)
 # Pin to a specific version for reproducible builds, e.g. ghcr.io/astral-sh/uv:0.x.y
 COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /uvx /usr/local/bin/
