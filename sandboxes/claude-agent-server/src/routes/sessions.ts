@@ -83,6 +83,10 @@ sessionsRouter.post(
     if (input.stream) {
       openSse(res)
 
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) res.write(': keepalive\n\n')
+      }, 15_000)
+
       try {
         const result = await execute(
           { ...promptInput(input), signal: requestAbortSignal(req, res) },
@@ -99,6 +103,7 @@ sessionsRouter.post(
       } catch (error) {
         writeSseError(res, error)
       } finally {
+        clearInterval(heartbeat)
         closeSse(res)
       }
 
@@ -165,6 +170,10 @@ sessionsRouter.post(
     if (input.stream) {
       openSse(res)
 
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) res.write(': keepalive\n\n')
+      }, 15_000)
+
       try {
         const result = await execute(
           {
@@ -187,6 +196,7 @@ sessionsRouter.post(
       } catch (error) {
         writeSseError(res, error)
       } finally {
+        clearInterval(heartbeat)
         closeSse(res)
       }
 
