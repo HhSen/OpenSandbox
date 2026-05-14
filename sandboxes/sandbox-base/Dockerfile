@@ -36,7 +36,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # 1. Install common tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl wget git vim nano unzip zip tar build-essential \
+    ca-certificates curl wget git openssh-client vim nano unzip zip tar build-essential \
     gnupg lsb-release \
     && rm -rf /var/lib/apt/lists/*
 
