@@ -37,6 +37,20 @@ export function closeSse(res: Response) {
 }
 
 /**
+ * Sends a periodic SSE comment to keep the connection alive while the agent
+ * is running. Returns a cleanup function; call it when the agent finishes so
+ * the interval is cleared before the stream is closed.
+ */
+export function startSseHeartbeat(res: Response, intervalMs = 15_000): () => void {
+  const timer = setInterval(() => {
+    if (!res.writableEnded) {
+      res.write(': ping\n\n')
+    }
+  }, intervalMs)
+  return () => clearInterval(timer)
+}
+
+/**
  * Returns an AbortSignal that fires when the HTTP client drops the connection
  * mid-stream. The signal does NOT fire when the response ends normally.
  *

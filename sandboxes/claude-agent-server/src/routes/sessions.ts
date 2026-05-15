@@ -35,7 +35,7 @@ import {
 } from '../lib/claude/handlers/index.js'
 import { runtimeRegistry } from '../lib/claude/adapters/runtime-registry.js'
 import { asyncHandler, HttpError } from '../lib/http/errors.js'
-import { closeSse, openSse, requestAbortSignal, writeSseError, writeSseEvent } from '../lib/http/sse.js'
+import { closeSse, openSse, requestAbortSignal, startSseHeartbeat, writeSseError, writeSseEvent } from '../lib/http/sse.js'
 
 export const sessionsRouter = Router()
 
@@ -84,6 +84,7 @@ sessionsRouter.post(
 
     if (input.stream) {
       openSse(res)
+      const stopHeartbeat = startSseHeartbeat(res)
 
       try {
         const result = await execute(
@@ -91,6 +92,7 @@ sessionsRouter.post(
           (event) => writeSseEvent(res, event),
         )
 
+        stopHeartbeat()
         writeSseEvent(res, {
           event: 'session.completed',
           data: {
@@ -99,6 +101,7 @@ sessionsRouter.post(
           },
         })
       } catch (error) {
+        stopHeartbeat()
         writeSseError(res, error)
       } finally {
         closeSse(res)
@@ -173,6 +176,7 @@ sessionsRouter.post(
 
     if (input.stream) {
       openSse(res)
+      const stopHeartbeat = startSseHeartbeat(res)
 
       try {
         const result = await execute(
@@ -186,6 +190,7 @@ sessionsRouter.post(
           (event) => writeSseEvent(res, event),
         )
 
+        stopHeartbeat()
         writeSseEvent(res, {
           event: 'session.completed',
           data: {
@@ -194,6 +199,7 @@ sessionsRouter.post(
           },
         })
       } catch (error) {
+        stopHeartbeat()
         writeSseError(res, error)
       } finally {
         closeSse(res)
