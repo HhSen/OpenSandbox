@@ -144,6 +144,9 @@ export async function execute(
     options: {
       ...buildOptions(input),
       ...(sessionStore !== undefined ? { sessionStore } : {}),
+      stderr: (data) => {
+        logger.warn({ data: data.trimEnd() }, 'claude stderr')
+      },
       canUseTool: async (toolName, toolInput, options) => {
         const sid = discoveredSessionId ?? input.sessionId ?? 'unknown'
 

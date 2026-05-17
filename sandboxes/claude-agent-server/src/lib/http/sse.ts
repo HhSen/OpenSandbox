@@ -31,7 +31,7 @@ export function writeSseError(res: Response, error: unknown) {
       ? (error as { statusCode: number }).statusCode
       : 500
 
-  logger.warn({ code, message }, 'sse error →')
+  logger.error({ err: error, code }, 'sse error →')
   writeSseEvent(res, {
     event: 'error',
     data: { message, code },
