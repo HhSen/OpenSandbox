@@ -1,5 +1,7 @@
 import type { Request, Response } from 'express'
 
+import { logger } from '../logger.js'
+
 export type SseEvent = {
   event: string
   data: unknown
@@ -13,6 +15,11 @@ export function openSse(res: Response) {
 }
 
 export function writeSseEvent(res: Response, payload: SseEvent) {
+  const sessionId =
+    payload.data != null && typeof payload.data === 'object' && 'sessionId' in payload.data
+      ? (payload.data as Record<string, unknown>).sessionId
+      : undefined
+  logger.debug({ event: payload.event, sessionId }, 'sse →')
   res.write(`event: ${payload.event}\n`)
   res.write(`data: ${JSON.stringify(payload.data)}\n\n`)
 }
@@ -24,6 +31,7 @@ export function writeSseError(res: Response, error: unknown) {
       ? (error as { statusCode: number }).statusCode
       : 500
 
+  logger.warn({ code, message }, 'sse error →')
   writeSseEvent(res, {
     event: 'error',
     data: { message, code },

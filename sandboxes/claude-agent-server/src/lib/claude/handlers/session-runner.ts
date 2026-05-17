@@ -228,6 +228,26 @@ export async function execute(
 
       const event = normalizeMessage(message)
       events.push(event)
+
+      if (event.event === 'session.init') {
+        logger.info(
+          { sessionId: event.data.sessionId, model: event.data.model, permissionMode: event.data.permissionMode },
+          'session initialized',
+        )
+      } else if (event.event === 'result') {
+        logger.info(
+          {
+            sessionId: event.data.sessionId,
+            subtype: event.data.subtype,
+            isError: event.data.isError,
+            durationMs: event.data.durationMs,
+            totalCostUsd: event.data.totalCostUsd,
+            numTurns: event.data.numTurns,
+          },
+          'session result',
+        )
+      }
+
       onEvent?.(event)
 
       if (message.type === 'result') {

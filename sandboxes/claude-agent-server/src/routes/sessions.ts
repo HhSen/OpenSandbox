@@ -1,5 +1,6 @@
 import { Router } from 'express'
 
+import { logger } from '../lib/logger.js'
 import {
   abortSession,
   createSessionBodySchema,
@@ -93,13 +94,9 @@ sessionsRouter.post(
         )
 
         stopHeartbeat()
-        writeSseEvent(res, {
-          event: 'session.completed',
-          data: {
-            sessionId: result.sessionId,
-            subtype: result.result?.subtype ?? null,
-          },
-        })
+        const completedData = { sessionId: result.sessionId, subtype: result.result?.subtype ?? null }
+        logger.info(completedData, 'session completed')
+        writeSseEvent(res, { event: 'session.completed', data: completedData })
       } catch (error) {
         stopHeartbeat()
         writeSseError(res, error)
@@ -191,13 +188,9 @@ sessionsRouter.post(
         )
 
         stopHeartbeat()
-        writeSseEvent(res, {
-          event: 'session.completed',
-          data: {
-            sessionId: result.sessionId,
-            subtype: result.result?.subtype ?? null,
-          },
-        })
+        const completedData = { sessionId: result.sessionId, subtype: result.result?.subtype ?? null }
+        logger.info(completedData, 'session completed')
+        writeSseEvent(res, { event: 'session.completed', data: completedData })
       } catch (error) {
         stopHeartbeat()
         writeSseError(res, error)
