@@ -62,7 +62,7 @@ function buildOptions(input: ExecutePromptInput): Options {
   const permissionMode = input.options?.permissionMode ?? config.defaultPermissionMode
   const settingSources = input.options?.settingSources ?? config.defaultSettingSources
 
-  if (permissionMode === 'bypassPermissions') {
+  if (permissionMode === 'bypassPermissions' && !config.allowBypassPermissions) {
     throw new HttpError(400, 'permissionMode=bypassPermissions is not enabled in this server')
   }
 

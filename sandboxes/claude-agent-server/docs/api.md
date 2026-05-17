@@ -14,7 +14,7 @@ http://<HOST>:<PORT>        default: http://0.0.0.0:3000
 
 ## Authentication
 
-Optional. Set `CLAUDE_WRAPPER_REQUIRE_AUTH_TOKEN=<token>` at startup.  
+Optional. Set `CLAUDE_AGENT_REQUIRE_AUTH_TOKEN=<token>` at startup.  
 When set, every request must include:
 
 ```
@@ -465,8 +465,8 @@ Accepted in `options` on `POST /sessions` and `POST /sessions/:sessionId/message
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `cwd` | string | SDK default | Working directory for Claude Code |
-| `model` | string | `CLAUDE_WRAPPER_DEFAULT_MODEL` env | Model identifier |
-| `permissionMode` | enum | `CLAUDE_WRAPPER_DEFAULT_PERMISSION_MODE` env (`default`) | `default`, `acceptEdits`, `plan`, `dontAsk`, `auto` — **`bypassPermissions` is rejected** |
+| `model` | string | `CLAUDE_AGENT_DEFAULT_MODEL` env | Model identifier |
+| `permissionMode` | enum | `CLAUDE_AGENT_DEFAULT_PERMISSION_MODE` env (`default`) | `default`, `acceptEdits`, `plan`, `dontAsk`, `auto` — **`bypassPermissions` is rejected** |
 | `settingSources` | `("user"\|"project"\|"local")[]` | `["project","user","local"]` | Which Claude Code config files to load |
 | `systemPrompt` | string | claude_code preset | Override the full system prompt |
 | `appendSystemPrompt` | string | — | Append to the claude_code preset system prompt |
@@ -951,11 +951,11 @@ The stream closes immediately after.
 |---|---|---|
 | `PORT` | `3000` | TCP port to listen on |
 | `HOST` | `0.0.0.0` | Bind address |
-| `CLAUDE_WRAPPER_DEFAULT_MODEL` | *(SDK default)* | Default model for all prompts |
-| `CLAUDE_WRAPPER_DEFAULT_PERMISSION_MODE` | `default` | Default permission mode (`default`, `acceptEdits`, `plan`, `dontAsk`, `auto`) |
-| `CLAUDE_WRAPPER_DEFAULT_SETTING_SOURCES` | `project,user,local` | Comma-separated list of Claude config sources to load |
-| `CLAUDE_WRAPPER_REQUIRE_AUTH_TOKEN` | *(unset)* | When set, require `Authorization: Bearer <token>` on all requests |
-| `CLAUDE_WRAPPER_CONFIG_FILE` | `./config.json` | Override path to the startup config file (see [Config file](#config-file)) |
+| `CLAUDE_AGENT_DEFAULT_MODEL` | *(SDK default)* | Default model for all prompts |
+| `CLAUDE_AGENT_DEFAULT_PERMISSION_MODE` | `default` | Default permission mode (`default`, `acceptEdits`, `plan`, `dontAsk`, `auto`) |
+| `CLAUDE_AGENT_DEFAULT_SETTING_SOURCES` | `project,user,local` | Comma-separated list of Claude config sources to load |
+| `CLAUDE_AGENT_REQUIRE_AUTH_TOKEN` | *(unset)* | When set, require `Authorization: Bearer <token>` on all requests |
+| `CLAUDE_AGENT_CONFIG_FILE` | `./config.json` | Override path to the startup config file (see [Config file](#config-file)) |
 | `USERNAME` | *(unset)* | When set, appended to the S3 prefix to namespace sessions per user: `{prefix}/{USERNAME}/…` |
 
 ---

@@ -57,7 +57,7 @@ When the env vars are absent (local dev, AWS IAM role deployments) the server re
 }
 ```
 
-Override the file path with `CLAUDE_WRAPPER_CONFIG_FILE=<path>`.
+Override the file path with `CLAUDE_AGENT_CONFIG_FILE=<path>`.
 
 **Env vars always win.** If at least one of `ORANGEFS_ENDPOINT`, `ORANGEFS_VOLUME`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` is missing, the server falls back to `config.json`. If neither source is present, the server starts with local-disk storage only (no error).
 

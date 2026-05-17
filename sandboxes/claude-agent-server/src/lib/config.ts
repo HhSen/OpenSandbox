@@ -7,13 +7,17 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().default('0.0.0.0'),
   ANTHROPIC_MODEL: z.string().optional(),
-  CLAUDE_WRAPPER_DEFAULT_PERMISSION_MODE: permissionModeSchema.default('default'),
-  CLAUDE_WRAPPER_DEFAULT_SETTING_SOURCES: z
+  CLAUDE_AGENT_DEFAULT_PERMISSION_MODE: permissionModeSchema.default('default'),
+  CLAUDE_AGENT_DEFAULT_SETTING_SOURCES: z
     .string()
     .default('project,user,local')
     .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean))
     .pipe(z.array(settingSourceSchema)),
-  CLAUDE_WRAPPER_REQUIRE_AUTH_TOKEN: z.string().optional(),
+  CLAUDE_AGENT_REQUIRE_AUTH_TOKEN: z.string().optional(),
+  CLAUDE_AGENT_ALLOW_BYPASS_PERMISSIONS: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
 })
 
@@ -23,8 +27,9 @@ export const config = {
   host: parsed.HOST,
   port: parsed.PORT,
   defaultModel: parsed.ANTHROPIC_MODEL,
-  defaultPermissionMode: parsed.CLAUDE_WRAPPER_DEFAULT_PERMISSION_MODE,
-  defaultSettingSources: parsed.CLAUDE_WRAPPER_DEFAULT_SETTING_SOURCES,
-  authToken: parsed.CLAUDE_WRAPPER_REQUIRE_AUTH_TOKEN,
+  defaultPermissionMode: parsed.CLAUDE_AGENT_DEFAULT_PERMISSION_MODE,
+  defaultSettingSources: parsed.CLAUDE_AGENT_DEFAULT_SETTING_SOURCES,
+  authToken: parsed.CLAUDE_AGENT_REQUIRE_AUTH_TOKEN,
+  allowBypassPermissions: parsed.CLAUDE_AGENT_ALLOW_BYPASS_PERMISSIONS ?? false,
   logLevel: parsed.LOG_LEVEL,
 }

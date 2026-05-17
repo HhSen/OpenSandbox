@@ -28,7 +28,7 @@ loaded once at startup. The server looks for it at a conventional path:
 ./config.json          (relative to process.cwd() — the default)
 ```
 
-The path can be overridden with a single env var `CLAUDE_WRAPPER_CONFIG_FILE`
+The path can be overridden with a single env var `CLAUDE_AGENT_CONFIG_FILE`
 for cases where the working directory differs from the config location.
 If the file is absent or `sessionStore` is omitted, the server starts as today
 (local-disk only). Missing required fields inside a present `sessionStore` block
@@ -133,7 +133,7 @@ const startupConfigSchema = z.object({
 export type StartupConfig = z.infer<typeof startupConfigSchema>
 
 export function loadStartupConfig(): StartupConfig {
-  const path = process.env.CLAUDE_WRAPPER_CONFIG_FILE ?? './config.json'
+  const path = process.env.CLAUDE_AGENT_CONFIG_FILE ?? './config.json'
   if (!existsSync(path)) return {}
   const raw = JSON.parse(readFileSync(path, 'utf8'))
   return startupConfigSchema.parse(raw)
@@ -184,7 +184,7 @@ export function buildSessionStore(cfg: StartupConfig): SessionStore | undefined 
 
 ### 6. `CLAUDE.md` — update config section
 Add a new **Config file** section documenting `config.json` and its schema.
-Add `CLAUDE_WRAPPER_CONFIG_FILE` to the env var table as the sole env var for
+Add `CLAUDE_AGENT_CONFIG_FILE` to the env var table as the sole env var for
 config file path override.
 
 ---

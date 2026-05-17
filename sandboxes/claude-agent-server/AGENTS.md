@@ -49,7 +49,7 @@ sandboxes/claude-agent-server/
 
 The server optionally reads a **`config.json`** file from the working directory at startup. Use it for infrastructure-level settings that are fixed per deployment (not per-request).
 
-Path resolution: `./config.json` (relative to `process.cwd()`). Override with the `CLAUDE_WRAPPER_CONFIG_FILE` env var.
+Path resolution: `./config.json` (relative to `process.cwd()`). Override with the `CLAUDE_AGENT_CONFIG_FILE` env var.
 
 If the file is absent or has no `sessionStore` key, the server starts normally with local-disk session storage only. A present but malformed `sessionStore` block is a **hard startup error**.
 
@@ -77,11 +77,12 @@ If the file is absent or has no `sessionStore` key, the server starts normally w
 
 | Variable | Purpose |
 |---|---|
-| `ANTHROPIC_MODEL` | Default model for all sessions (short alias; `CLAUDE_WRAPPER_DEFAULT_MODEL` takes precedence if both are set) |
-| `CLAUDE_WRAPPER_DEFAULT_MODEL` | Default model for all sessions (overrides `ANTHROPIC_MODEL`) |
-| `CLAUDE_WRAPPER_DEFAULT_PERMISSION_MODE` | Default permission mode (`default`, `acceptEdits`, `autoEdit`, `bypassPermissions`) — default: `default` |
-| `CLAUDE_WRAPPER_DEFAULT_SETTING_SOURCES` | Comma-separated setting sources — default: `project,user,local` |
-| `CLAUDE_WRAPPER_REQUIRE_AUTH_TOKEN` | If set, all requests must supply this token as a Bearer token |
+| `ANTHROPIC_MODEL` | Default model for all sessions (short alias; `CLAUDE_AGENT_DEFAULT_MODEL` takes precedence if both are set) |
+| `CLAUDE_AGENT_DEFAULT_MODEL` | Default model for all sessions (overrides `ANTHROPIC_MODEL`) |
+| `CLAUDE_AGENT_DEFAULT_PERMISSION_MODE` | Default permission mode (`default`, `acceptEdits`, `autoEdit`, `bypassPermissions`) — default: `default` |
+| `CLAUDE_AGENT_DEFAULT_SETTING_SOURCES` | Comma-separated setting sources — default: `project,user,local` |
+| `CLAUDE_AGENT_REQUIRE_AUTH_TOKEN` | If set, all requests must supply this token as a Bearer token |
+| `CLAUDE_AGENT_ALLOW_BYPASS_PERMISSIONS` | Set to `true` or `1` to allow `bypassPermissions` as a permission mode. Disabled by default. Intended for trusted sandbox deployments. |
 | `CLAUDE_CODE_EXECUTABLE` | Absolute path to the `claude` binary. Required when Claude Code is installed via the native installer and the SDK cannot find a bundled binary via npm optional dependencies |
 | `PORT` | HTTP listen port — default: `3000` |
 | `HOST` | HTTP listen host — default: `0.0.0.0` |
@@ -91,7 +92,7 @@ If the file is absent or has no `sessionStore` key, the server starts normally w
 | `ORANGEFS_VOLUME` | S3 bucket name for the session store |
 | `S3_ACCESS_KEY` | S3 access key ID |
 | `S3_SECRET_KEY` | S3 secret access key |
-| `CLAUDE_WRAPPER_CONFIG_FILE` | Override path to `config.json` (default: `./config.json`) |
+| `CLAUDE_AGENT_CONFIG_FILE` | Override path to `config.json` (default: `./config.json`) |
 
 ## COMMANDS
 ```bash

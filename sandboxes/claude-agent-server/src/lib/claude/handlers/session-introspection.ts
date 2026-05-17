@@ -6,6 +6,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 
+import { config } from '../../config.js'
 import { HttpError } from '../../http/errors.js'
 import { runtimeRegistry } from '../adapters/runtime-registry.js'
 import type { rewindSessionBodySchema } from './schemas.js'
@@ -102,7 +103,7 @@ export async function setSessionModel(sessionId: string, model?: string) {
  * Only available when the session was started with a streaming input prompt (AsyncIterable).
  */
 export async function setSessionPermissionMode(sessionId: string, mode: PermissionMode) {
-  if (mode === 'bypassPermissions') {
+  if (mode === 'bypassPermissions' && !config.allowBypassPermissions) {
     throw new HttpError(400, 'permissionMode=bypassPermissions is not enabled in this server')
   }
   const q = await requireActiveQuery(sessionId)
