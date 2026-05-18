@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
 import httpx
 import pytest
 
+from opensandbox._pool_reconciler import ReconcileState, run_reconcile_tick
 from opensandbox.config.connection_sync import ConnectionConfigSync
 from opensandbox.exceptions import (
     PoolAcquireFailedException,
@@ -15,8 +17,64 @@ from opensandbox.exceptions import (
     PoolNotRunningException,
 )
 from opensandbox.models.sandboxes import PlatformSpec
-from opensandbox.pool import AcquirePolicy, InMemoryPoolStateStore, PoolCreationSpec
+from opensandbox.pool import (
+    AcquirePolicy,
+    InMemoryPoolStateStore,
+    PoolConfig,
+    PoolCreationSpec,
+)
 from opensandbox.sync.pool import SandboxPoolSync
+
+
+def test_degraded_backoff_caps_at_one_day() -> None:
+    state = ReconcileState(degraded_threshold=1)
+
+    for _ in range(20):
+        state.record_failure("boom")
+
+    assert state.failure_count == 20
+    assert state.is_backoff_active(datetime.now(timezone.utc) + timedelta(hours=23))
+    assert not state.is_backoff_active(datetime.now(timezone.utc) + timedelta(hours=25))
+
+
+def test_degraded_backoff_starts_at_thirty_seconds() -> None:
+    state = ReconcileState(degraded_threshold=1)
+
+    state.record_failure("boom")
+
+    assert state.is_backoff_active(datetime.now(timezone.utc) + timedelta(seconds=29))
+    assert not state.is_backoff_active(datetime.now(timezone.utc) + timedelta(seconds=31))
+
+
+def test_reconcile_batch_failures_only_advance_backoff_once() -> None:
+    store = InMemoryPoolStateStore()
+    config = PoolConfig(
+        pool_name="pool",
+        owner_id="owner-1",
+        max_idle=10,
+        warmup_concurrency=10,
+        state_store=store,
+        connection_config=ConnectionConfigSync(),
+        creation_spec=PoolCreationSpec(image="ubuntu:22.04"),
+    )
+    state = ReconcileState(degraded_threshold=3)
+
+    def fail_create() -> str:
+        raise RuntimeError("boom")
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        run_reconcile_tick(
+            config=config,
+            state_store=store,
+            create_one=fail_create,
+            on_discard_sandbox=lambda _sandbox_id: None,
+            reconcile_state=state,
+            warmup_executor=executor,
+        )
+
+    assert state.failure_count == 10
+    assert state.is_backoff_active(datetime.now(timezone.utc) + timedelta(seconds=29))
+    assert not state.is_backoff_active(datetime.now(timezone.utc) + timedelta(seconds=31))
 
 
 def test_acquire_fail_fast_empty_raises_pool_empty() -> None:

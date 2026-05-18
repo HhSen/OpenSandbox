@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
 import httpx
 import pytest
 
+from opensandbox._async_pool_reconciler import run_async_reconcile_tick
+from opensandbox._pool_reconciler import ReconcileState
 from opensandbox.config import ConnectionConfig
 from opensandbox.exceptions import (
     PoolAcquireFailedException,
@@ -17,6 +19,7 @@ from opensandbox.exceptions import (
 from opensandbox.models.sandboxes import PlatformSpec
 from opensandbox.pool import (
     AcquirePolicy,
+    AsyncPoolConfig,
     InMemoryAsyncPoolStateStore,
     PoolCreationSpec,
     SandboxPoolAsync,
@@ -33,6 +36,36 @@ async def test_async_acquire_fail_fast_empty_raises_pool_empty() -> None:
         assert exc.value.error.code == "POOL_EMPTY"
     finally:
         await pool.shutdown(False)
+
+
+@pytest.mark.asyncio
+async def test_async_reconcile_batch_failures_only_advance_backoff_once() -> None:
+    store = InMemoryAsyncPoolStateStore()
+    config = AsyncPoolConfig(
+        pool_name="pool",
+        owner_id="owner-1",
+        max_idle=10,
+        warmup_concurrency=10,
+        state_store=store,
+        connection_config=ConnectionConfig(),
+        creation_spec=PoolCreationSpec(image="ubuntu:22.04"),
+    )
+    state = ReconcileState(degraded_threshold=3)
+
+    async def fail_create() -> str:
+        raise RuntimeError("boom")
+
+    await run_async_reconcile_tick(
+        config=config,
+        state_store=store,
+        create_one=fail_create,
+        on_discard_sandbox=_noop_discard,
+        reconcile_state=state,
+    )
+
+    assert state.failure_count == 10
+    assert state.is_backoff_active(datetime.now(timezone.utc) + timedelta(seconds=29))
+    assert not state.is_backoff_active(datetime.now(timezone.utc) + timedelta(seconds=31))
 
 
 @pytest.mark.asyncio
@@ -318,6 +351,10 @@ def _create_pool(
 
 async def _manager_factory(manager: FakeAsyncManager) -> FakeAsyncManager:
     return manager
+
+
+async def _noop_discard(_sandbox_id: str) -> None:
+    return None
 
 
 async def _idle_count_equals(pool: SandboxPoolAsync, expected: int) -> bool:

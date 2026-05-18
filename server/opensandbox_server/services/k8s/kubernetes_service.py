@@ -264,7 +264,7 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
 
         Raises HTTP 400 if the provider does not support per-request image auth.
         """
-        if request.image.auth is None:
+        if request.image is None or request.image.auth is None:
             return
         if self.workload_provider.supports_image_auth():
             return
@@ -404,8 +404,11 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
         Raises:
             HTTPException: If creation fails, timeout, or invalid parameters
         """
-        request = resolve_sandbox_image_from_request(request)
-        ensure_entrypoint(request.entrypoint or [])
+        has_pool_ref = bool((request.extensions or {}).get("poolRef", "").strip())
+
+        if not has_pool_ref:
+            request = resolve_sandbox_image_from_request(request)
+            ensure_entrypoint(request.entrypoint or [])
         ensure_metadata_labels(request.metadata)
         ensure_platform_valid(request.platform)
         ensure_timeout_within_limit(
@@ -788,21 +791,25 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
 
         new_labels = self._apply_metadata_patch(labels, patch)
 
+        # JSON merge patch (RFC 7396) on metadata.labels treats keys absent
+        # from the body as kept. To delete a label we must send the key with
+        # an explicit null. Build the merge body from the desired final labels
+        # plus null markers for keys removed by this patch.
+        label_patch: Dict[str, Optional[str]] = dict(new_labels)
+        for key, value in patch.items():
+            if value is None:
+                label_patch[key] = None
+
         try:
-            self.workload_provider.patch_labels(
+            updated = self.workload_provider.patch_labels(
                 name=name,
                 namespace=self.namespace,
-                labels=new_labels,
+                labels=label_patch,
             )
         except Exception as e:
             logger.error("Error patching labels for sandbox %s: %s", sandbox_id, e)
             raise _build_k8s_api_error("patch sandbox labels", e) from e
 
-        updated = _get_workload_or_404(
-            self.workload_provider,
-            self.namespace,
-            sandbox_id,
-        )
         return _build_sandbox_from_workload(updated, self.workload_provider)
 
     def get_endpoint(
