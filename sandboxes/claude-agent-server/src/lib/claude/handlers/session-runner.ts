@@ -21,20 +21,21 @@ import { permissionRegistry, questionRegistry } from './permission-handler.js'
 
 function initSessionStore() {
   try {
-    const store = buildSessionStore(loadStartupConfig())
+    const cfg = loadStartupConfig()
+    const store = buildSessionStore(cfg)
     if (store) {
-      logger.info('session store: S3 session store initialized')
+      logger.info('session store: initialized')
     } else {
       logger.info('session store: no session store configured, sessions will not be persisted to S3')
     }
-    return store
+    return { store, flush: cfg.sessionStoreFlush }
   } catch (err) {
     logger.fatal({ err }, 'session store: failed to initialize — server cannot start')
     process.exit(1)
   }
 }
 
-const sessionStore = initSessionStore()
+const { store: sessionStore, flush: sessionStoreFlush } = initSessionStore()
 
 export type ExecutePromptInput = {
   sessionId?: string
@@ -143,7 +144,10 @@ export async function execute(
     prompt: promptToStream(input.prompt),
     options: {
       ...buildOptions(input),
-      ...(sessionStore !== undefined ? { sessionStore } : {}),
+      ...(sessionStore !== undefined ? {
+        sessionStore,
+        ...(sessionStoreFlush !== undefined ? { sessionStoreFlush } : {}),
+      } : {}),
       stderr: (data) => {
         logger.warn({ data: data.trimEnd() }, 'claude stderr')
       },

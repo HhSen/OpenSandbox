@@ -27,6 +27,12 @@ const redisConfigSchema = z.object({
 
 const startupConfigSchema = z.object({
   sessionStore: z.discriminatedUnion('type', [s3ConfigSchema, redisConfigSchema]).optional(),
+  /**
+   * Controls how aggressively transcript entries are flushed to the session store.
+   * 'batched' (default): flush at end-of-turn.
+   * 'eager': flush after every frame — near-real-time delivery, but one append() call per frame.
+   */
+  sessionStoreFlush: z.enum(['batched', 'eager']).optional(),
 })
 
 export type StartupConfig = z.infer<typeof startupConfigSchema>

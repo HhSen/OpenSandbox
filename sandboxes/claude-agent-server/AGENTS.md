@@ -58,6 +58,7 @@ If the file is absent or has no `sessionStore` key, the server starts normally w
 ```jsonc
 // config.json
 {
+  "sessionStoreFlush": "batched",        // optional — "batched" (default, flush at end-of-turn) or "eager" (flush after every frame, near-real-time)
   "sessionStore": {
     "type": "s3",
     "bucket": "my-claude-sessions",       // required

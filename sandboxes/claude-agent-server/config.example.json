@@ -1,6 +1,9 @@
 {
   "_comment": "Copy to config.json and keep only one sessionStore block. Env vars always take precedence over this file (see CLAUDE.md for the full env var list).",
 
+  "_sessionStoreFlush_comment": "Controls how aggressively transcript entries are flushed to the session store. 'batched' (default): buffer and flush at end-of-turn. 'eager': flush after every frame for near-real-time delivery — one append() call per frame, so the store should be cheap per call.",
+  "_sessionStoreFlush": "batched",
+
   "_sessionStore_s3": {
     "_comment": "S3 or S3-compatible store (e.g. MinIO, OrangeFS). Rename key to 'sessionStore' to activate.",
     "type": "s3",
