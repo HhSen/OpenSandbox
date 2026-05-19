@@ -1,0 +1,25 @@
+{
+  "_comment": "Copy to config.json and keep only one sessionStore block. Env vars always take precedence over this file (see CLAUDE.md for the full env var list).",
+
+  "_sessionStore_s3": {
+    "_comment": "S3 or S3-compatible store (e.g. MinIO, OrangeFS). Rename key to 'sessionStore' to activate.",
+    "type": "s3",
+    "bucket": "my-claude-sessions",
+    "prefix": "transcripts",
+    "region": "us-east-1",
+    "endpoint": "http://localhost:9000",
+    "forcePathStyle": true,
+    "credentials": {
+      "_comment": "Omit 'credentials' to use the SDK credential chain (IAM role, ~/.aws, etc.).",
+      "accessKeyId": "AKIAIOSFODNN7EXAMPLE",
+      "secretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    }
+  },
+
+  "_sessionStore_redis": {
+    "_comment": "Redis store. Rename key to 'sessionStore' to activate.",
+    "type": "redis",
+    "url": "redis://localhost:6379",
+    "prefix": "claude-sessions"
+  }
+}

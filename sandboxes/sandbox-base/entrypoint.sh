@@ -1,8 +1,4 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: 2025 Weibo, Inc.
-#
-# SPDX-License-Identifier: Apache-2.0
-
 set -e
 
 echo "[entrypoint] USERNAME=${USERNAME} TASK_ID=${TASK_ID}"
@@ -48,11 +44,6 @@ if [ -x /usr/local/bin/orangefs ] && [ -n "${USERNAME:-}" ]; then
   fi
 else
   echo "[entrypoint] skipping orangefs mounts — binary absent or USERNAME not set"
-fi
-
-# Bootstrap /root/.claude.json from ANTHROPIC_API_KEY when it doesn't exist.
-if [ -n "${ANTHROPIC_API_KEY:-}" ] && [ ! -f /root/.claude.json ]; then
-  echo '{}' > /root/.claude.json
 fi
 
 echo "[entrypoint] starting claude-agent-server on port ${PORT:-3000}..."

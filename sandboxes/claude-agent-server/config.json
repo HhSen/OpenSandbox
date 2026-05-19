@@ -1,0 +1,7 @@
+{
+  "sessionStore": {
+    "type": "redis",
+    "url": "redis://localhost:6379",
+    "prefix": "claude_transcript"
+  }
+}

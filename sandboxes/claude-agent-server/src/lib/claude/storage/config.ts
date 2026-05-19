@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { z } from 'zod'
 
 import { logger } from '../../logger.js'
@@ -17,8 +19,14 @@ const s3ConfigSchema = z.object({
     .optional(),
 })
 
+const redisConfigSchema = z.object({
+  type: z.literal('redis'),
+  url: z.string().url(),
+  prefix: z.string().optional(),
+})
+
 const startupConfigSchema = z.object({
-  sessionStore: z.discriminatedUnion('type', [s3ConfigSchema]).optional(),
+  sessionStore: z.discriminatedUnion('type', [s3ConfigSchema, redisConfigSchema]).optional(),
 })
 
 export type StartupConfig = z.infer<typeof startupConfigSchema>
@@ -55,14 +63,69 @@ function buildS3ConfigFromEnv(): z.infer<typeof s3ConfigSchema> | undefined {
   }
 }
 
+function buildRedisConfigFromEnv(): z.infer<typeof redisConfigSchema> | undefined {
+  const url = process.env['REDIS_URL']
+  if (!url) return undefined
+
+  const username = process.env['USERNAME']
+  const prefix = username ? `${username}:history` : undefined
+
+  return {
+    type: 'redis',
+    url,
+    ...(prefix !== undefined ? { prefix } : {}),
+  }
+}
+
+function loadConfigFile(): StartupConfig {
+  const filePath = process.env['CLAUDE_AGENT_CONFIG_FILE'] ?? './config.json'
+  let raw: string
+  try {
+    raw = readFileSync(filePath, 'utf8')
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return {}
+    }
+    throw err
+  }
+  const parsed: unknown = JSON.parse(raw)
+  return startupConfigSchema.parse(parsed)
+}
+
 export function loadStartupConfig(): StartupConfig {
-  const envConfig = buildS3ConfigFromEnv()
-  if (envConfig) {
+  const s3Config = buildS3ConfigFromEnv()
+  if (s3Config) {
     logger.info(
-      { bucket: envConfig.bucket, endpoint: envConfig.endpoint, prefix: envConfig.prefix },
+      { bucket: s3Config.bucket, endpoint: s3Config.endpoint, prefix: s3Config.prefix },
       'session store: S3 config loaded from env vars',
     )
-    return { sessionStore: envConfig }
+    return { sessionStore: s3Config }
+  }
+
+  const redisConfig = buildRedisConfigFromEnv()
+  if (redisConfig) {
+    logger.info(
+      { url: redisConfig.url, prefix: redisConfig.prefix },
+      'session store: Redis config loaded from env vars',
+    )
+    return { sessionStore: redisConfig }
+  }
+
+  const fileCfg = loadConfigFile()
+  if (fileCfg.sessionStore) {
+    const { type } = fileCfg.sessionStore
+    if (type === 's3') {
+      logger.info(
+        { bucket: fileCfg.sessionStore.bucket, prefix: fileCfg.sessionStore.prefix },
+        'session store: S3 config loaded from config file',
+      )
+    } else {
+      logger.info(
+        { url: fileCfg.sessionStore.url, prefix: fileCfg.sessionStore.prefix },
+        'session store: Redis config loaded from config file',
+      )
+    }
+    return fileCfg
   }
 
   logger.info('session store: no configuration found, sessions will use local disk storage')
