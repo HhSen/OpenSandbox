@@ -99,7 +99,8 @@ export class RedisSessionStore implements SessionStore {
     for (let i = 0; i < flat.length; i += 2) {
       result.push({ sessionId: flat[i]!, mtime: Number(flat[i + 1]) })
     }
-    return result
+    // Return newest-first (descending mtime) to match S3 and in-memory store conventions.
+    return result.reverse()
   }
 
   async delete(key: SessionKey): Promise<void> {
