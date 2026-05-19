@@ -121,6 +121,9 @@ COPY --from=server-builder /app/dist /app/dist
 COPY --from=server-builder /app/docs /app/docs
 COPY --from=server-builder /app/node_modules /app/node_modules
 COPY --from=server-builder /app/package.json /app/package.json
+# Bake server config into the image; operators can override with CLAUDE_AGENT_CONFIG_FILE at runtime
+COPY sandboxes/claude-agent-server/config.json /app/config.json
+ENV CLAUDE_AGENT_CONFIG_FILE=/app/config.json
 
 COPY sandboxes/sandbox-base/bootstrap.sh /opt/opensandbox/bootstrap.sh
 COPY sandboxes/sandbox-base/entrypoint.sh /entrypoint.sh

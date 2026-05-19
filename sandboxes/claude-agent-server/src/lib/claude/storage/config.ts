@@ -99,13 +99,17 @@ function loadConfigFile(): StartupConfig {
 }
 
 export function loadStartupConfig(): StartupConfig {
+  // Always read the file first so non-store settings (e.g. sessionStoreFlush) are
+  // applied even when the store itself is configured via env vars.
+  const fileCfg = loadConfigFile()
+
   const s3Config = buildS3ConfigFromEnv()
   if (s3Config) {
     logger.info(
       { bucket: s3Config.bucket, endpoint: s3Config.endpoint, prefix: s3Config.prefix },
       'session store: S3 config loaded from env vars',
     )
-    return { sessionStore: s3Config }
+    return { ...fileCfg, sessionStore: s3Config }
   }
 
   const redisConfig = buildRedisConfigFromEnv()
@@ -114,10 +118,9 @@ export function loadStartupConfig(): StartupConfig {
       { url: redisConfig.url, prefix: redisConfig.prefix },
       'session store: Redis config loaded from env vars',
     )
-    return { sessionStore: redisConfig }
+    return { ...fileCfg, sessionStore: redisConfig }
   }
 
-  const fileCfg = loadConfigFile()
   if (fileCfg.sessionStore) {
     const { type } = fileCfg.sessionStore
     if (type === 's3') {
@@ -135,5 +138,5 @@ export function loadStartupConfig(): StartupConfig {
   }
 
   logger.info('session store: no configuration found, sessions will use local disk storage')
-  return {}
+  return fileCfg
 }
