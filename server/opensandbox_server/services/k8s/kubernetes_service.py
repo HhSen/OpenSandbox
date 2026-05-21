@@ -191,7 +191,8 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
         
         while time.time() - start_time < timeout_seconds:
             try:
-                workload = self.workload_provider.get_workload(
+                workload = await asyncio.to_thread(
+                    self.workload_provider.get_workload,
                     sandbox_id=sandbox_id,
                     namespace=self.namespace,
                 )
@@ -443,10 +444,11 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
 
             # Auto-create PVCs that don't exist yet
             if request.volumes:
-                self._ensure_pvc_volumes(request.volumes)
+                await asyncio.to_thread(self._ensure_pvc_volumes, request.volumes)
 
             # Create workload
-            workload_info = self.workload_provider.create_workload(
+            workload_info = await asyncio.to_thread(
+                self.workload_provider.create_workload,
                 sandbox_id=sandbox_id,
                 namespace=self.namespace,
                 image_spec=request.image,
@@ -502,7 +504,11 @@ class KubernetesSandboxService(K8sDiagnosticsMixin, SandboxService, ExtensionSer
             except HTTPException as e:
                 try:
                     logger.error(f"Creation failed, cleaning up sandbox {sandbox_id}: {e}")
-                    self.workload_provider.delete_workload(sandbox_id, self.namespace)
+                    await asyncio.to_thread(
+                        self.workload_provider.delete_workload,
+                        sandbox_id,
+                        self.namespace,
+                    )
                 except Exception as cleanup_ex:
                     logger.error(f"Failed to cleanup sandbox {sandbox_id}", exc_info=cleanup_ex)
                 raise

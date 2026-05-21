@@ -43,9 +43,15 @@ import (
 	"github.com/alibaba/OpenSandbox/sandbox-k8s/internal/controller"
 	poolassign "github.com/alibaba/OpenSandbox/sandbox-k8s/internal/controller/poolassign"
 	cryptoutil "github.com/alibaba/OpenSandbox/sandbox-k8s/internal/utils/crypto"
+	"github.com/alibaba/OpenSandbox/sandbox-k8s/internal/utils/expectations"
 	"github.com/alibaba/OpenSandbox/sandbox-k8s/internal/utils/fieldindex"
 	"github.com/alibaba/OpenSandbox/sandbox-k8s/internal/utils/logging"
 	// +kubebuilder:scaffold:imports
+)
+
+var (
+	commitID  = "unknown"
+	buildDate = "unknown"
 )
 
 const (
@@ -237,6 +243,8 @@ func main() {
 	logger := logging.NewLoggerWithZapOptions(logOpts)
 	ctrl.SetLogger(logger)
 
+	setupLog.Info("Starting controller", "commitID", commitID, "buildDate", buildDate)
+
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
 	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
@@ -375,11 +383,12 @@ func main() {
 	}
 
 	config := ctrl.GetConfigOrDie()
+	config.UserAgent = "sandbox-k8s-controller/1.0"
 	// Set client rate limiter if specified
-	if kubeClientQPS > 0 {
+	if kubeClientQPS != 0 {
 		config.QPS = float32(kubeClientQPS)
 	}
-	if kubeClientBurst > 0 {
+	if kubeClientBurst != 0 {
 		config.Burst = kubeClientBurst
 	}
 
@@ -422,11 +431,12 @@ func main() {
 	}
 
 	if err := (&controller.BatchSandboxReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		Recorder:         mgr.GetEventRecorderFor("batchsandbox-controller"),
-		ResumePullSecret: resumePullSecret,
-		ProfileStore:     profileStore,
+		Client:              mgr.GetClient(),
+		Scheme:              mgr.GetScheme(),
+		Recorder:            mgr.GetEventRecorderFor("batchsandbox-controller"),
+		ResumePullSecret:    resumePullSecret,
+		ProfileStore:        profileStore,
+		StatusRVExpectation: expectations.NewResourceVersionExpectation(),
 	}).SetupWithManager(mgr, batchSandboxConcurrency); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "BatchSandbox")
 		os.Exit(1)

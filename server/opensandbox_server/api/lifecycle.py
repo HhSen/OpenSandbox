@@ -19,7 +19,6 @@ This module defines FastAPI routes that map to the OpenAPI specification endpoin
 All business logic is delegated to the service layer that backs each operation.
 """
 
-import asyncio
 from typing import List, Optional
 
 from fastapi import APIRouter, Body, Header, Query, Request, status
@@ -111,7 +110,7 @@ async def create_sandbox(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def list_sandboxes(
+def list_sandboxes(
     state: Optional[List[str]] = Query(None, description="Filter by lifecycle state. Pass multiple times for OR logic."),
     metadata: Optional[str] = Query(None, description="Arbitrary metadata key-value pairs for filtering (URL encoded)."),
     page: int = Query(1, ge=1, description="Page number for pagination"),
@@ -176,7 +175,7 @@ async def list_sandboxes(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def get_sandbox(
+def get_sandbox(
     sandbox_id: str,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
 ) -> Sandbox:
@@ -214,7 +213,7 @@ async def get_sandbox(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def patch_sandbox_metadata(
+def patch_sandbox_metadata(
     sandbox_id: str,
     patch: PatchSandboxMetadataRequest = Body(...),
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
@@ -239,7 +238,7 @@ async def patch_sandbox_metadata(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def delete_sandbox(
+def delete_sandbox(
     sandbox_id: str,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
 ) -> Response:
@@ -279,7 +278,7 @@ async def delete_sandbox(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def pause_sandbox(
+def pause_sandbox(
     sandbox_id: str,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
 ) -> Response:
@@ -316,7 +315,7 @@ async def pause_sandbox(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def resume_sandbox(
+def resume_sandbox(
     sandbox_id: str,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
 ) -> Response:
@@ -355,7 +354,7 @@ async def resume_sandbox(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def renew_sandbox_expiration(
+def renew_sandbox_expiration(
     sandbox_id: str,
     request: RenewSandboxExpirationRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
@@ -402,7 +401,7 @@ async def renew_sandbox_expiration(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def create_snapshot(
+def create_snapshot(
     sandbox_id: str,
     response: Response,
     request: Optional[CreateSnapshotRequest] = None,
@@ -412,11 +411,7 @@ async def create_snapshot(
     Create a persistent point-in-time snapshot from a sandbox.
     """
     create_request = request or CreateSnapshotRequest()
-    snapshot = await asyncio.to_thread(
-        snapshot_service.create_snapshot,
-        sandbox_id,
-        create_request,
-    )
+    snapshot = snapshot_service.create_snapshot(sandbox_id, create_request)
     response.headers["Location"] = f"/v1/snapshots/{snapshot.id}"
     return snapshot
 
@@ -433,7 +428,7 @@ async def create_snapshot(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def list_snapshots(
+def list_snapshots(
     sandbox_id: Optional[str] = Query(None, alias="sandboxId", description="Filter snapshots by source sandbox identifier"),
     state: Optional[List[str]] = Query(None, description="Filter by snapshot lifecycle state. Pass multiple times for OR logic."),
     page: int = Query(1, ge=1, description="Page number for pagination"),
@@ -464,7 +459,7 @@ async def list_snapshots(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def get_snapshot(
+def get_snapshot(
     snapshot_id: str,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
 ) -> Snapshot:
@@ -488,7 +483,7 @@ async def get_snapshot(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def delete_snapshot(
+def delete_snapshot(
     snapshot_id: str,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID", description="Unique request identifier for tracing"),
 ) -> Response:
@@ -515,7 +510,7 @@ async def delete_snapshot(
         500: {"model": ErrorResponse, "description": "An unexpected server error occurred"},
     },
 )
-async def get_sandbox_endpoint(
+def get_sandbox_endpoint(
     request: Request,
     sandbox_id: str,
     port: int,

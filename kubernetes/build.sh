@@ -31,6 +31,8 @@ BUILD_ARGS=()
 for name in GOFLAGS LDFLAGS CGO_ENABLED CC CXX CFLAGS CXXFLAGS CGO_CFLAGS CGO_CXXFLAGS CGO_LDFLAGS; do
     build_arg_if_set "${name}"
 done
+BUILD_ARGS+=(--build-arg "COMMIT_ID=$(git rev-parse --short HEAD)")
+BUILD_ARGS+=(--build-arg "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)")
 mkdir -p "$(dirname "${BUILD_METADATA_FILE}")"
 
 DOCKERHUB_REPO="opensandbox"
